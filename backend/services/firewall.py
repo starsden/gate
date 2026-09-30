@@ -1,0 +1,172 @@
+"""
+Firewall service for Linux VPN Gateway.
+Manages and inspects nftables ruleset for policy routing and NAT masquerading.
+Supports ruleset generation, syntax verification, atomic updates, and rollback.
+"""
+
+import os
+import platform
+import shutil
+import subprocess
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+NFTABLES_CONF_PATH = Path("/etc/nftables.conf")
+CONFIG_DIR = Path("/etc/vpn-gateway")
+BACKUP_DIR = CONFIG_DIR / "backups"
+
+
+def _is_linux() -> bool:
+    return platform.system() == "Linux"
+
+
+def get_firewall_status() -> Dict[str, Any]:
+    """Check nftables service status, ruleset existence, and NAT forwarding chains."""
+    from .system import get_service_status
+    svc = get_service_status("nftables")
+
+    has_nft = shutil.which("nft") is not None
+    ruleset_loaded = False
+    rules_count = 0
+    nat_enabled = False
+
+    if has_nft and _is_linux():
+        try:
+            res = subprocess.run(["nft", "list", "ruleset"], capture_output=True, text=True, timeout=3)
+            if "table" in res.stdout:
+                ruleset_loaded = True
+                rules_count = len([l for l in res.stdout.splitlines() if l.strip()])
+                nat_enabled = "masquerade" in res.stdout
+        except Exception:
+            pass
+    else:
+        # Dev simulated active status
+        ruleset_loaded = True
+        rules_count = 32
+        nat_enabled = True
+
+    return {
+        "status": svc["status"],
+        "substate": svc["substate"],
+        "ruleset_loaded": ruleset_loaded,
+        "rules_count": rules_count,
+        "nat_enabled": nat_enabled,
+        "masquerade_interfaces": ["xray0", "enp3s0"],
+        "allowed_ports": [
+            {"port": 80, "protocol": "tcp", "service": "Web UI (HTTP)"},
+            {"port": 53, "protocol": "udp/tcp", "service": "DNS Resolver"},
+            {"port": 67, "protocol": "udp", "service": "DHCP Server"},
+        ],
+    }
+
+
+def generate_nftables_ruleset(wan_iface: str = "enp3s0", lan_iface: str = "wlp4s0", tun_iface: str = "xray0") -> str:
+    """Generate production nftables ruleset for Gateway."""
+    return f"""#!/usr/sbin/nft -f
+# /etc/nftables.conf
+# Managed by Linux VPN Gateway
+
+flush ruleset
+
+table inet filter {{
+    chain input {{
+        type filter hook input priority filter; policy accept;
+        iif "lo" accept
+        ct state established,related accept
+        
+        # Allow DHCP, DNS, and Web UI on Wi-Fi LAN
+        iif "{lan_iface}" udp dport {{ 53, 67 }} accept
+        iif "{lan_iface}" tcp dport {{ 53, 80 }} accept
+    }}
+
+    chain forward {{
+        type filter hook forward priority filter; policy accept;
+        ct state established,related accept
+        
+        # Forward Wi-Fi client traffic to Xray TUN
+        iif "{lan_iface}" oif "{tun_iface}" accept
+        
+        # Fallback forward to WAN Ethernet
+        iif "{lan_iface}" oif "{wan_iface}" accept
+    }}
+
+    chain output {{
+        type filter hook output priority filter; policy accept;
+    }}
+}}
+
+table ip nat {{
+    chain postrouting {{
+        type filter hook postrouting priority srcnat; policy accept;
+        
+        # Masquerade traffic going to Xray TUN
+        oif "{tun_iface}" masquerade
+        
+        # Masquerade traffic going direct to WAN
+        oif "{wan_iface}" masquerade
+    }}
+}}
+"""
+
+
+def apply_firewall_ruleset(wan_iface: str, lan_iface: str, tun_iface: str = "xray0") -> Dict[str, Any]:
+    """
+    Validate and apply nftables ruleset with backup and rollback.
+    """
+    new_rules = generate_nftables_ruleset(wan_iface, lan_iface, tun_iface)
+
+    if not _is_linux() or not shutil.which("nft"):
+        return {
+            "success": True,
+            "message": "Firewall rules generated and simulated (dev environment).",
+            "wan": wan_iface,
+            "lan": lan_iface,
+            "tun": tun_iface,
+        }
+
+    target_file = NFTABLES_CONF_PATH
+    backup_file = None
+
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        if target_file.exists():
+            timestamp = int(time.time())
+            backup_file = BACKUP_DIR / f"nftables.conf.{timestamp}.bak"
+            shutil.copy2(target_file, backup_file)
+
+        # Syntax test using temporary file
+        temp_file = Path("/tmp/nft_test.conf")
+        with open(temp_file, "w") as f:
+            f.write(new_rules)
+
+        test_res = subprocess.run(["nft", "-c", "-f", str(temp_file)], capture_output=True, text=True, timeout=5)
+        if test_res.returncode != 0:
+            if temp_file.exists(): temp_file.unlink()
+            return {"success": False, "error": f"nftables syntax check failed: {test_res.stderr.strip()}"}
+
+        # Apply atomically
+        temp_file.replace(target_file)
+
+        # Reload nftables
+        reload_res = subprocess.run(["nft", "-f", str(target_file)], capture_output=True, text=True, timeout=5)
+        if reload_res.returncode != 0:
+            # Rollback
+            if backup_file and backup_file.exists():
+                shutil.copy2(backup_file, target_file)
+                subprocess.run(["nft", "-f", str(target_file)], check=False)
+            return {"success": False, "error": f"Failed to reload nftables: {reload_res.stderr.strip()}"}
+
+        # Restart nftables service if systemd is active
+        subprocess.run(["systemctl", "restart", "nftables.service"], check=False)
+
+        return {
+            "success": True,
+            "message": "Firewall ruleset applied successfully.",
+            "rules_count": len(new_rules.splitlines()),
+        }
+    except Exception as e:
+        if backup_file and backup_file.exists() and target_file.exists():
+            shutil.copy2(backup_file, target_file)
+            subprocess.run(["nft", "-f", str(target_file)], check=False)
+        return {"success": False, "error": f"Firewall apply error: {str(e)}"}

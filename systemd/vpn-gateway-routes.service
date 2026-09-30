@@ -1,0 +1,14 @@
+[Unit]
+Description=VPN Gateway Policy Routing Rules & Table 100 Sync
+After=network-online.target xray.service
+Wants=network-online.target xray.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/vpn-gateway
+ExecStart=/bin/sh -c 'ip rule add from 10.42.0.0/24 lookup 100 2>/dev/null || true; /opt/vpn-gateway/venv/bin/python -m backend.services.network || true'
+ExecStop=/bin/sh -c 'ip rule del from 10.42.0.0/24 lookup 100 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

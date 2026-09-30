@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VPN Gateway</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230a84ff'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z'/></svg>">
+</head>
+<body>
+
+  <!-- Backend Offline Banner -->
+  <div id="backend-alert" class="backend-alert hidden">
+    <div class="alert-content">
+      <span class="alert-icon">⚠</span>
+      <span class="alert-text">Backend unavailable. Reconnecting...</span>
+    </div>
+  </div>
+
+  <div id="app" class="app-layout">
+
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+      <button id="menu-toggle" class="btn-icon" aria-label="Toggle Navigation">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+      <div class="mobile-brand">
+        <span class="status-indicator-dot" id="mobile-vpn-beacon"></span>
+        <span class="brand-text">VPN Gateway</span>
+      </div>
+      <button id="mobile-theme-toggle" class="btn-icon" aria-label="Toggle Theme">
+        <svg class="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <svg class="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Mobile Drawer Backdrop -->
+    <div id="drawer-backdrop" class="drawer-backdrop"></div>
+
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon-wrap">
+          <span class="beacon-pulse" id="brand-beacon"></span>
+        </div>
+        <div class="brand-title-wrap">
+          <h1 class="brand-name">VPN GATEWAY</h1>
+          <span class="brand-subtitle" id="sidebar-gateway-ip">10.42.0.1</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#dashboard" class="nav-item active" data-page="dashboard">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span>Dashboard</span>
+        </a>
+
+        <a href="#vpn" class="nav-item" data-page="vpn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <span>VPN</span>
+        </a>
+
+        <a href="#wifi" class="nav-item" data-page="wifi">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+            <line x1="12" y1="20" x2="12.01" y2="20"></line>
+          </svg>
+          <span>Wi-Fi</span>
+        </a>
+
+        <a href="#devices" class="nav-item" data-page="devices">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+          </svg>
+          <span>Devices</span>
+          <span class="nav-badge" id="nav-clients-badge">0</span>
+        </a>
+
+        <a href="#network" class="nav-item" data-page="network">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span>Network</span>
+        </a>
+
+        <a href="#diagnostics" class="nav-item" data-page="diagnostics">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+          </svg>
+          <span>Diagnostics</span>
+          <span class="nav-badge badge-danger hidden" id="nav-diag-badge">!</span>
+        </a>
+
+        <div class="nav-divider"></div>
+
+        <a href="#logs" class="nav-item" data-page="logs">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+          <span>Logs</span>
+        </a>
+
+        <a href="#system" class="nav-item" data-page="system">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          <span>System</span>
+        </a>
+
+        <a href="#settings" class="nav-item" data-page="settings">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Settings</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="connection-status" id="sidebar-sse-status">
+          <span class="status-dot"></span>
+          <span class="status-text">Live Sync</span>
+        </div>
+        <button id="theme-toggle" class="btn-theme-toggle" aria-label="Toggle Dark/Light Mode">
+          <span class="theme-text">Theme</span>
+          <span class="theme-icon-container">
+            <svg class="theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+            <svg class="theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          </span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main id="content" class="main-content">
+
+      <!-- Top bar -->
+      <header class="topbar">
+        <div class="topbar-title-wrap">
+          <h2 id="page-title" class="page-title">Dashboard</h2>
+        </div>
+        <div class="topbar-actions">
+          <div class="pill pill-status" id="topbar-vpn-pill">
+            <span class="status-indicator-dot" id="topbar-vpn-dot"></span>
+            <span id="topbar-vpn-text">VPN Connected</span>
+          </div>
+          <button id="btn-refresh" class="btn-refresh" aria-label="Refresh data">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Page Containers -->
+      <div class="page-container">
+
+        <!-- ================= DASHBOARD PAGE ================= -->
+        <section id="page-dashboard" class="page-section active">
+          
+          <!-- Master Hero Card -->
+          <div class="hero-card">
+            <div class="hero-content">
+              <div class="hero-header">
+                <span class="hero-label">VPN GATEWAY STATUS</span>
+                <span class="hero-badge badge-active" id="dash-master-badge">● Active</span>
+              </div>
+              <div class="hero-title-row">
+                <h3 class="hero-title" id="dash-master-status">VPN Connected</h3>
+                <div class="hero-tags">
+                  <span class="hero-tag" id="dash-hero-proto">VLESS / REALITY</span>
+                  <span class="hero-tag" id="dash-hero-latency">42 ms</span>
+                </div>
+              </div>
+            </div>
+            <div class="hero-actions">
+              <button id="btn-dash-restart-vpn" class="btn btn-secondary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                </svg>
+                Restart VPN
+              </button>
+              <a href="#wifi" class="btn btn-primary">
+                Wi-Fi Settings
+              </a>
+            </div>
+          </div>
+
+          <!-- Cards Grid -->
+          <div class="cards-grid">
+            
+            <!-- Internet Card -->
+            <div class="card stat-card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                  </svg>
+                  <span class="card-title">Internet</span>
+                </div>
+                <span class="status-badge badge-success" id="dash-wan-badge">Connected</span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Interface</span>
+                  <span class="stat-val font-mono" id="dash-wan-iface">enp3s0</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">IP Address</span>
+                  <span class="stat-val font-mono" id="dash-wan-ip">192.168.0.23</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Gateway</span>
+                  <span class="stat-val font-mono" id="dash-wan-gw">192.168.0.1</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- VPN Card -->
+            <div class="card stat-card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                  <span class="card-title">VPN</span>
+                </div>
+                <span class="status-badge badge-success" id="dash-vpn-badge">VLESS / REALITY</span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Server</span>
+                  <span class="stat-val font-mono" id="dash-vpn-server">185.196.220.14:443</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">SNI</span>
+                  <span class="stat-val font-mono" id="dash-vpn-sni">cloudflare.com</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Traffic</span>
+                  <span class="stat-val font-mono" id="dash-vpn-traffic">↓ 2.4 GB &nbsp; ↑ 410 MB</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Wi-Fi Card -->
+            <div class="card stat-card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                  </svg>
+                  <span class="card-title">Wi-Fi</span>
+                </div>
+                <span class="status-badge badge-success" id="dash-wifi-badge">Running</span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">SSID</span>
+                  <span class="stat-val font-bold" id="dash-wifi-ssid">freedom</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Channel</span>
+                  <span class="stat-val" id="dash-wifi-channel">6 (2.4 GHz)</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Clients</span>
+                  <span class="stat-val font-bold" id="dash-wifi-clients">0 devices</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Traffic Throughput Card -->
+            <div class="card stat-card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                  </svg>
+                  <span class="card-title">Bandwidth</span>
+                </div>
+                <span class="badge-neutral" id="dash-latency-badge">42 ms</span>
+              </div>
+              <div class="card-body speed-body">
+                <div class="speed-box">
+                  <span class="speed-arrow down">↓</span>
+                  <div class="speed-meta">
+                    <span class="speed-val" id="dash-speed-down">0.0</span>
+                    <span class="speed-unit">Mbps</span>
+                  </div>
+                  <span class="speed-name">Download</span>
+                </div>
+                <div class="speed-divider"></div>
+                <div class="speed-box">
+                  <span class="speed-arrow up">↑</span>
+                  <div class="speed-meta">
+                    <span class="speed-val" id="dash-speed-up">0.0</span>
+                    <span class="speed-unit">Mbps</span>
+                  </div>
+                  <span class="speed-name">Upload</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- System Quick Overview Card -->
+          <div class="card system-quick-card">
+            <div class="card-header">
+              <span class="card-title">Hardware Resources</span>
+              <a href="#system" class="card-link">View Full System →</a>
+            </div>
+            <div class="system-meters-row">
+              <div class="meter-item">
+                <div class="meter-head">
+                  <span class="meter-label">CPU Usage</span>
+                  <span class="meter-val font-mono" id="dash-cpu-pct">0%</span>
+                </div>
+                <div class="progress-bar-wrap">
+                  <div class="progress-bar" id="dash-cpu-bar" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <div class="meter-item">
+                <div class="meter-head">
+                  <span class="meter-label">RAM Usage</span>
+                  <span class="meter-val font-mono" id="dash-ram-pct">0%</span>
+                </div>
+                <div class="progress-bar-wrap">
+                  <div class="progress-bar" id="dash-ram-bar" style="width: 0%;"></div>
+                </div>
+                <span class="meter-sub" id="dash-ram-sub">0.0 / 0.0 GB</span>
+              </div>
+
+              <div class="meter-item">
+                <div class="meter-head">
+                  <span class="meter-label">Temperature</span>
+                  <span class="meter-val font-mono" id="dash-temp-val">--°C</span>
+                </div>
+                <div class="progress-bar-wrap">
+                  <div class="progress-bar progress-temp" id="dash-temp-bar" style="width: 45%;"></div>
+                </div>
+              </div>
+
+              <div class="meter-item uptime-item">
+                <span class="meter-label">Gateway Uptime</span>
+                <span class="meter-uptime-val font-mono" id="dash-uptime-val">--</span>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ================= SYSTEM PAGE ================= -->
+        <section id="page-system" class="page-section">
+          
+          <div class="system-grid">
+            
+            <!-- Hardware Specs Card -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">Platform Information</span>
+                <span class="status-badge badge-active" id="sys-arch-badge">x86_64</span>
+              </div>
+              <div class="card-body">
+                <div class="detail-grid">
+                  <div class="detail-item">
+                    <span class="detail-label">Hostname</span>
+                    <span class="detail-value font-mono font-bold" id="sys-hostname">--</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Operating System</span>
+                    <span class="detail-value" id="sys-os">--</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Kernel</span>
+                    <span class="detail-value font-mono" id="sys-kernel">--</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Architecture</span>
+                    <span class="detail-value font-mono" id="sys-arch">--</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">System Uptime</span>
+                    <span class="detail-value font-mono" id="sys-uptime">--</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">CPU Cores</span>
+                    <span class="detail-value font-mono" id="sys-cores">--</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Resource Metrics Card -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">Resource Utilization</span>
+              </div>
+              <div class="card-body">
+                <div class="resource-meters-stack">
+                  
+                  <!-- CPU -->
+                  <div class="res-item">
+                    <div class="res-header">
+                      <span class="res-name">CPU</span>
+                      <span class="res-pct font-mono" id="sys-cpu-val">0%</span>
+                    </div>
+                    <div class="progress-bar-wrap">
+                      <div class="progress-bar" id="sys-cpu-bar" style="width: 0%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- RAM -->
+                  <div class="res-item">
+                    <div class="res-header">
+                      <span class="res-name">Memory (RAM)</span>
+                      <span class="res-pct font-mono" id="sys-ram-val">0%</span>
+                    </div>
+                    <div class="progress-bar-wrap">
+                      <div class="progress-bar" id="sys-ram-bar" style="width: 0%;"></div>
+                    </div>
+                    <div class="res-sub font-mono" id="sys-ram-text">0.0 / 0.0 GB</div>
+                  </div>
+
+                  <!-- Storage -->
+                  <div class="res-item">
+                    <div class="res-header">
+                      <span class="res-name">Disk (Root Filesystem)</span>
+                      <span class="res-pct font-mono" id="sys-disk-val">0%</span>
+                    </div>
+                    <div class="progress-bar-wrap">
+                      <div class="progress-bar" id="sys-disk-bar" style="width: 0%;"></div>
+                    </div>
+                    <div class="res-sub font-mono" id="sys-disk-text">0.0 / 0.0 GB</div>
+                  </div>
+
+                  <!-- Temperature -->
+                  <div class="res-item">
+                    <div class="res-header">
+                      <span class="res-name">CPU Temperature</span>
+                      <span class="res-pct font-mono" id="sys-temp-val">--°C</span>
+                    </div>
+                    <div class="progress-bar-wrap">
+                      <div class="progress-bar progress-temp" id="sys-temp-bar" style="width: 45%;"></div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Managed Services Card -->
+          <div class="card services-card">
+            <div class="card-header">
+              <div>
+                <span class="card-title">System Services</span>
+                <p class="card-desc">Core daemons managed by systemd for VPN routing and Access Point operations.</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="services-table">
+                <thead>
+                  <tr>
+                    <th>Service</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Substate</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="services-table-body">
+                  <tr>
+                    <td colspan="5" class="table-loading">Loading service states...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ================= VPN PAGE ================= -->
+        <section id="page-vpn" class="page-section">
+          
+          <div class="vpn-grid">
+            
+            <!-- Active VPN Status Card -->
+            <div class="card vpn-status-card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                  <span class="card-title">Xray VLESS Tunnel</span>
+                </div>
+                <span class="status-badge badge-success" id="vpn-page-status-badge">● Connected</span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Protocol</span>
+                  <span class="stat-val font-bold" id="vpn-info-proto">VLESS</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Security</span>
+                  <span class="stat-val font-bold text-accent" id="vpn-info-security">REALITY</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Transport</span>
+                  <span class="stat-val font-mono" id="vpn-info-transport">TCP</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Server</span>
+                  <span class="stat-val font-mono font-bold" id="vpn-info-server">185.196.220.14:443</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">SNI (Server Name)</span>
+                  <span class="stat-val font-mono" id="vpn-info-sni">cloudflare.com</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Flow</span>
+                  <span class="stat-val font-mono" id="vpn-info-flow">xtls-rprx-vision</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Fingerprint</span>
+                  <span class="stat-val font-mono" id="vpn-info-fp">chrome</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">UUID</span>
+                  <span class="stat-val font-mono text-muted" id="vpn-info-uuid">••••••••-••••-••••-••••-••••••••657c</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Uptime</span>
+                  <span class="stat-val font-mono" id="vpn-info-uptime">2h 17m</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Traffic</span>
+                  <span class="stat-val font-mono" id="vpn-info-traffic">↓ 4.2 GB &nbsp; ↑ 832 MB</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Latency</span>
+                  <span class="stat-val font-mono" id="vpn-info-latency">42 ms</span>
+                </div>
+              </div>
+              <div class="card-footer vpn-actions-footer">
+                <button type="button" id="btn-vpn-restart" class="btn btn-secondary btn-sm">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                  </svg>
+                  Restart VPN
+                </button>
+                <button type="button" id="btn-vpn-toggle" class="btn btn-danger btn-sm">
+                  Disconnect
+                </button>
+                <button type="button" id="btn-vpn-test" class="btn btn-primary btn-sm">
+                  Test Connection
+                </button>
+              </div>
+            </div>
+
+            <!-- Import VLESS Configuration Card -->
+            <!-- Import VLESS or Subscription Card -->
+            <div class="card vpn-import-card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span class="card-title">Import VLESS or Subscription</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <p class="card-desc mb-3">
+                  Paste an HTTP/HTTPS subscription URL, a Base64-encoded subscription bundle, or one/multiple <code>vless://</code> connection strings. The gateway will parse all endpoints and allow live switching.
+                </p>
+
+                <div class="form-group">
+                  <label class="form-label" for="vless-input-uri">Subscription URL or VLESS Links</label>
+                  <textarea id="vless-input-uri" class="form-control font-mono vless-textarea" rows="4" placeholder="https://your-provider.com/sub/token... or vless://••••••••-••••-••••-••••-••••••••••••@185.xxx.xxx.xxx:443?security=reality&...#Location"></textarea>
+                </div>
+
+                <div class="import-actions-row">
+                  <button type="button" id="btn-vless-import" class="btn btn-primary">
+                    Import & Parse
+                  </button>
+                  <button type="button" id="btn-vless-clear" class="btn btn-secondary">
+                    Clear
+                  </button>
+                </div>
+
+                <!-- Parsed Summary Box (Appears after import or preview) -->
+                <div id="vless-summary-box" class="vless-summary-box hidden">
+                  <div class="summary-head">
+                    <span class="summary-title">VLESS Configuration Summary</span>
+                    <span class="status-badge badge-active" id="summary-proto-badge">REALITY</span>
+                  </div>
+                  <div class="summary-grid">
+                    <div class="summary-item">
+                      <span class="summary-label">Server</span>
+                      <span class="summary-value font-mono font-bold" id="sum-server">--</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="summary-label">Port</span>
+                      <span class="summary-value font-mono" id="sum-port">--</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="summary-label">Security</span>
+                      <span class="summary-value font-bold" id="sum-security">--</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="summary-label">Transport</span>
+                      <span class="summary-value font-mono" id="sum-transport">--</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="summary-label">SNI</span>
+                      <span class="summary-value font-mono" id="sum-sni">--</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="summary-label">Fingerprint</span>
+                      <span class="summary-value font-mono" id="sum-fp">--</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="summary-label">Flow</span>
+                      <span class="summary-value font-mono" id="sum-flow">--</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="summary-label">UUID</span>
+                      <span class="summary-value font-mono text-muted" id="sum-uuid">--</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Subscription Servers Card -->
+            <div class="card vpn-subscription-card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                  </svg>
+                  <span class="card-title">Subscription Servers</span>
+                </div>
+                <div class="sub-header-actions">
+                  <span class="status-badge badge-active" id="sub-servers-count-badge">0 Servers</span>
+                  <button type="button" id="btn-sub-ping-all" class="btn btn-secondary btn-sm" title="Test latency to all servers">
+                    ⚡ Ping All
+                  </button>
+                  <button type="button" id="btn-sub-refresh" class="btn btn-secondary btn-sm" title="Fetch latest servers from subscription URL">
+                    🔄 Refresh
+                  </button>
+                </div>
+              </div>
+              <div class="card-body">
+                <div id="sub-meta-bar" class="sub-meta-bar hidden">
+                  <div class="sub-meta-left">
+                    <span class="sub-meta-label">Subscription URL:</span>
+                    <span class="sub-meta-url font-mono" id="sub-meta-url-val">--</span>
+                  </div>
+                  <div class="sub-meta-right">
+                    <span class="sub-meta-label">Last Updated:</span>
+                    <span class="sub-meta-time font-mono" id="sub-meta-time-val">--</span>
+                  </div>
+                </div>
+
+                <div class="table-responsive mt-2">
+                  <table class="devices-table subscription-table">
+                    <thead>
+                      <tr>
+                        <th style="width: 100px;">Status</th>
+                        <th>Server / Location</th>
+                        <th>Address</th>
+                        <th>Security</th>
+                        <th style="width: 110px;">Latency</th>
+                        <th style="width: 120px; text-align: right;">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="subscription-servers-tbody">
+                      <tr>
+                        <td colspan="6" class="table-loading">
+                          No servers imported yet. Paste your subscription link or VLESS links above to load servers.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ================= WI-FI PAGE ================= -->
+        <section id="page-wifi" class="page-section">
+          
+          <div class="wifi-grid">
+            
+            <!-- Wi-Fi Operational Status Card -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                  </svg>
+                  <span class="card-title">Wireless Access Point</span>
+                </div>
+                <span class="status-badge badge-success" id="wifi-status-badge">● Running</span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Interface</span>
+                  <span class="stat-val font-mono" id="wifi-info-iface">wlp4s0</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Chipset</span>
+                  <span class="stat-val font-bold" id="wifi-info-chipset">Qualcomm Atheros AR9285</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Driver</span>
+                  <span class="stat-val font-mono" id="wifi-info-driver">ath9k</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">AP Mode Support</span>
+                  <span class="stat-val font-bold text-success" id="wifi-info-ap">Supported (✓)</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Frequency & Band</span>
+                  <span class="stat-val" id="wifi-info-freq">2.4 GHz</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Current Channel</span>
+                  <span class="stat-val font-bold" id="wifi-info-channel">6</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Channel Width</span>
+                  <span class="stat-val" id="wifi-info-width">20 MHz</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">TX Power</span>
+                  <span class="stat-val font-mono" id="wifi-info-txpower">15 dBm</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Security</span>
+                  <span class="stat-val font-bold" id="wifi-info-security">WPA2-PSK</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Connected Devices</span>
+                  <a href="#devices" class="stat-val font-bold card-link" id="wifi-info-devices-link">0 devices →</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- Wi-Fi Settings Configuration Card -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span class="card-title">Access Point Settings</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <form id="wifi-settings-form" class="settings-form" onsubmit="return false;">
+                  <div class="form-group">
+                    <label class="form-label" for="wifi-input-ssid">SSID (Network Name)</label>
+                    <input type="text" id="wifi-input-ssid" class="form-control" placeholder="freedom" required maxlength="32" />
+                    <span class="form-hint">The Wi-Fi network name broadcast to clients.</span>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="wifi-input-pass">Password</label>
+                    <div class="input-with-button">
+                      <input type="password" id="wifi-input-pass" class="form-control font-mono" placeholder="••••••••" required minlength="8" maxlength="63" />
+                      <button type="button" id="btn-toggle-wifi-pass" class="btn-input-action" aria-label="Toggle password visibility">
+                        👁
+                      </button>
+                    </div>
+                    <span class="form-hint">WPA2 Pre-Shared Key (min. 8 characters).</span>
+                  </div>
+
+                  <div class="form-row-2">
+                    <div class="form-group">
+                      <label class="form-label" for="wifi-select-channel">Channel</label>
+                      <select id="wifi-select-channel" class="form-control">
+                        <option value="0">Auto</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6" selected>6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                        <option value="9">9</option>
+                        <option value="10">10</option>
+                        <option value="11">11</option>
+                        <option value="12">12</option>
+                        <option value="13">13</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="wifi-select-country">Country</label>
+                      <select id="wifi-select-country" class="form-control">
+                        <option value="RU" selected>RU</option>
+                        <option value="US">US</option>
+                        <option value="DE">DE</option>
+                        <option value="GB">GB</option>
+                        <option value="KZ">KZ</option>
+                        <option value="BY">BY</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="form-group toggle-group">
+                    <div class="toggle-info">
+                      <span class="toggle-title">802.11n</span>
+                      <span class="toggle-desc">High Throughput mode (up to 150 Mbps).</span>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" id="wifi-toggle-11n" checked />
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="button" id="btn-wifi-apply" class="btn btn-primary">
+                      Apply changes
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ================= DEVICES PAGE ================= -->
+        <section id="page-devices" class="page-section">
+          
+          <div class="card devices-card-container">
+            <div class="card-header">
+              <div>
+                <span class="card-title">Connected Devices</span>
+                <p class="card-desc">Active clients connected to the Wi-Fi gateway with assigned DHCP leases.</p>
+              </div>
+              <div class="devices-header-actions">
+                <span class="status-badge badge-active" id="devices-count-pill">0 Devices</span>
+                <button id="btn-refresh-devices" class="btn btn-secondary btn-sm">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="services-table devices-table">
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>IP Address</th>
+                    <th>Signal</th>
+                    <th>Traffic</th>
+                    <th class="text-right">MAC Address</th>
+                  </tr>
+                </thead>
+                <tbody id="devices-table-body">
+                  <tr>
+                    <td colspan="5" class="table-loading">Scanning for connected devices...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ================= NETWORK PAGE ================= -->
+        <section id="page-network" class="page-section">
+          
+          <!-- Top Grid: WAN and LAN -->
+          <div class="network-grid">
+            
+            <!-- WAN (Internet) Card -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                  </svg>
+                  <span class="card-title">Internet (WAN)</span>
+                </div>
+                <span class="status-badge badge-success" id="net-wan-badge">● Connected</span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Interface</span>
+                  <span class="stat-val font-mono" id="net-wan-iface">enp3s0</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">IP Address</span>
+                  <span class="stat-val font-mono font-bold" id="net-wan-ip">192.168.0.23</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Subnet</span>
+                  <span class="stat-val font-mono" id="net-wan-subnet">192.168.0.0/24</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Default Gateway</span>
+                  <span class="stat-val font-mono" id="net-wan-gw">192.168.0.1</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">DNS Resolver</span>
+                  <span class="stat-val font-mono" id="net-wan-dns">192.168.0.1, 1.1.1.1</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- LAN (Local Access Point) Card -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                  </svg>
+                  <span class="card-title">Local Network (LAN)</span>
+                </div>
+                <span class="status-badge badge-active" id="net-lan-badge">● 10.42.0.1</span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Interface</span>
+                  <span class="stat-val font-mono" id="net-lan-iface">wlp4s0</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Gateway IP</span>
+                  <span class="stat-val font-mono font-bold" id="net-lan-gw">10.42.0.1</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Subnet</span>
+                  <span class="stat-val font-mono font-bold" id="net-lan-net">10.42.0.0/24</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">DHCP Pool</span>
+                  <span class="stat-val font-mono" id="net-lan-dhcp">10.42.0.10 - 10.42.0.200</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Lease Duration</span>
+                  <span class="stat-val font-mono" id="net-lan-lease">24h</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Bottom Grid: Policy Routing (Table 100) & Firewall (nftables) -->
+          <div class="network-grid mt-4">
+            
+            <!-- Policy Routing Table 100 Card -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <span class="card-title">Policy Routing (Table 100)</span>
+                  <p class="card-desc">Routes Wi-Fi client traffic directly to <code>xray0</code> while isolating VLESS server IP to Ethernet.</p>
+                </div>
+                <button type="button" id="btn-sync-routes" class="btn btn-secondary btn-sm">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                  Sync Routes
+                </button>
+              </div>
+              <div class="table-responsive">
+                <table class="services-table">
+                  <thead>
+                    <tr>
+                      <th>Destination</th>
+                      <th>Device</th>
+                      <th>Gateway</th>
+                      <th class="text-right">Scope</th>
+                    </tr>
+                  </thead>
+                  <tbody id="routes-table-body">
+                    <tr>
+                      <td colspan="4" class="table-loading">Loading routing table 100...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Firewall & NAT (nftables) Card -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <span class="card-title">Firewall & NAT (nftables)</span>
+                  <p class="card-desc">Stateful packet filtering, client forwarding, and masquerading rules.</p>
+                </div>
+                <span class="status-badge badge-success" id="net-nft-badge">● Active</span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">NAT Masquerading</span>
+                  <span class="stat-val font-mono font-bold text-success" id="net-nft-nat">xray0, enp3s0</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Forwarding Chains</span>
+                  <span class="stat-val font-mono" id="net-nft-forward">wlp4s0 → xray0, wlp4s0 → enp3s0</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Allowed LAN Inbound</span>
+                  <span class="stat-val font-mono" id="net-nft-ports">TCP 80, DNS 53, DHCP 67</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Active Rules</span>
+                  <span class="stat-val font-mono" id="net-nft-rules-count">-- rules loaded</span>
+                </div>
+              </div>
+              <div class="card-footer vpn-actions-footer">
+                <button type="button" id="btn-reload-nft" class="btn btn-secondary btn-sm">
+                  Reload Firewall Ruleset
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ================= DIAGNOSTICS PAGE ================= -->
+        <section id="page-diagnostics" class="page-section">
+          
+          <!-- Diagnostics Master Hero Banner -->
+          <div class="card diag-banner-card">
+            <div class="diag-banner-header">
+              <div class="diag-banner-info">
+                <div class="diag-badge-row">
+                  <span class="status-badge badge-success" id="diag-master-badge">● All Systems Operational</span>
+                  <span class="text-muted" style="font-size: 12px;" id="diag-last-scan">Last checked: Just now</span>
+                </div>
+                <h3 class="diag-banner-title">Subsystem Health & Self-Healing</h3>
+                <p class="diag-banner-desc">Continuous monitoring of WAN Ethernet, Wi-Fi AP, Xray TUN interface, policy routing table 100, and packet filtering.</p>
+              </div>
+              <div class="diag-banner-actions">
+                <button type="button" id="btn-refresh-diag" class="btn btn-secondary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                  Re-check
+                </button>
+                <button type="button" id="btn-run-repair" class="btn btn-primary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+                  </svg>
+                  Run Auto-Repair
+                </button>
+              </div>
+            </div>
+
+            <!-- Diagnostics Metrics Cards -->
+            <div class="diag-stats-grid">
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Passed Checks</span>
+                <span class="diag-stat-val text-success" id="diag-stat-passed">-- / --</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Issues Detected</span>
+                <span class="diag-stat-val font-bold" id="diag-stat-issues">0</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Routing Status</span>
+                <span class="diag-stat-val font-mono" id="diag-stat-routing">Table 100 OK</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Self-Healing</span>
+                <span class="diag-stat-val text-success">Automated</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Repair Log / Actions Box (Hidden by default, shown when repair run) -->
+          <div id="repair-results-box" class="card repair-results-card hidden">
+            <div class="card-header">
+              <div class="card-icon-title">
+                <svg class="card-icon text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span class="card-title">Auto-Repair Execution Summary</span>
+              </div>
+              <button type="button" id="btn-dismiss-repair" class="btn btn-secondary btn-sm">Dismiss</button>
+            </div>
+            <div class="card-body">
+              <ul class="repair-actions-list" id="repair-actions-list">
+              </ul>
+            </div>
+          </div>
+
+          <!-- Diagnostic Checks Checklist Table -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <span class="card-title">System Diagnostic Checks</span>
+                <p class="card-desc">End-to-end verification of all gateway hardware, daemons, virtual interfaces, and routing rules.</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="services-table diag-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Subsystem & Check</th>
+                    <th>Diagnostic Verification</th>
+                    <th class="text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="diag-table-body">
+                  <tr>
+                    <td colspan="4" class="table-loading">Running complete system diagnostics...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ================= LOGS PAGE ================= -->
+        <section id="page-logs" class="page-section">
+          
+          <div class="card logs-container-card">
+            <div class="card-header logs-header">
+              <div class="logs-controls-left">
+                <div class="form-group-inline">
+                  <label class="form-label" for="logs-select-service" style="margin-bottom:0;">Service:</label>
+                  <select id="logs-select-service" class="form-control" style="width: auto; min-width: 170px;">
+                    <option value="gateway" selected>vpn-gateway (Web UI)</option>
+                    <option value="xray">xray (VPN Tunnel)</option>
+                    <option value="hostapd">hostapd (Wi-Fi AP)</option>
+                    <option value="dnsmasq">dnsmasq (DHCP/DNS)</option>
+                    <option value="nftables">nftables (Firewall)</option>
+                    <option value="system">System (journalctl)</option>
+                  </select>
+                </div>
+
+                <div class="form-group-inline">
+                  <label class="form-label" for="logs-select-lines" style="margin-bottom:0;">Lines:</label>
+                  <select id="logs-select-lines" class="form-control" style="width: auto; min-width: 90px;">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="300">300</option>
+                  </select>
+                </div>
+
+                <div class="input-filter-wrap">
+                  <input type="text" id="logs-filter-input" class="form-control" placeholder="Filter log entries..." style="min-width: 180px;" />
+                </div>
+              </div>
+
+              <div class="logs-controls-right">
+                <div class="toggle-inline">
+                  <span style="font-size: 12px; color: var(--text-secondary);">Auto-tail</span>
+                  <label class="switch" style="width: 36px; height: 20px;">
+                    <input type="checkbox" id="logs-toggle-autotail" checked />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+
+                <button type="button" id="btn-refresh-logs" class="btn btn-secondary btn-sm">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                  Refresh
+                </button>
+
+                <button type="button" id="btn-clear-logs" class="btn btn-secondary btn-sm" title="Clear view">
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <!-- Terminal Output Window -->
+            <div class="terminal-window">
+              <div class="terminal-bar">
+                <div class="terminal-dots">
+                  <span class="dot dot-red"></span>
+                  <span class="dot dot-yellow"></span>
+                  <span class="dot dot-green"></span>
+                </div>
+                <span class="terminal-title font-mono" id="terminal-service-title">vpn-gateway.service</span>
+                <span class="terminal-status" id="terminal-status">LIVE</span>
+              </div>
+              <pre class="terminal-body font-mono" id="logs-pre-output">Connecting to system journal...</pre>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ================= SETTINGS & BACKUPS PAGE ================= -->
+        <section id="page-settings" class="page-section">
+          
+          <div class="settings-grid">
+            
+            <!-- Admin Credentials Card -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                  <span class="card-title">Admin Authentication</span>
+                </div>
+                <span class="status-badge badge-success" id="auth-status-badge">● Authenticated</span>
+              </div>
+              <div class="card-body">
+                <div class="auth-badge-row">
+                  <div class="auth-user-info">
+                    <span class="text-muted">Account:</span>
+                    <strong id="auth-user-name">admin</strong>
+                  </div>
+                  <button type="button" id="btn-auth-logout" class="btn btn-secondary btn-sm">
+                    Log Out
+                  </button>
+                </div>
+
+                <form id="form-change-password" autocomplete="off">
+                  <div class="form-group">
+                    <label class="form-label" for="input-old-pass">Current Password</label>
+                    <input type="password" id="input-old-pass" class="form-control" placeholder="••••••••" required />
+                  </div>
+
+                  <div class="form-row-2">
+                    <div class="form-group">
+                      <label class="form-label" for="input-new-pass">New Password</label>
+                      <input type="password" id="input-new-pass" class="form-control" placeholder="Min. 6 chars" required />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" for="input-confirm-pass">Confirm Password</label>
+                      <input type="password" id="input-confirm-pass" class="form-control" placeholder="Repeat new password" required />
+                    </div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" id="btn-save-password" class="btn btn-primary">
+                      Update Password
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- Create Snapshot Card -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span class="card-title">Create Configuration Snapshot</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <p class="text-secondary" style="font-size: 13px; line-height: 1.5; margin-bottom: 14px;">
+                  Archives active VPN profiles, Wi-Fi parameters, firewall ruleset, DHCP leases, and admin hash into an encrypted local archive for instant rollback.
+                </p>
+                <div class="form-group">
+                  <label class="form-label" for="input-snapshot-note">Snapshot Description</label>
+                  <input type="text" id="input-snapshot-note" class="form-control" placeholder="e.g. Working setup before trip" />
+                </div>
+                <div class="form-actions">
+                  <button type="button" id="btn-create-backup" class="btn btn-primary">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="17 8 12 3 7 8"></polyline>
+                      <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Create Snapshot Now
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Configuration Snapshots / Rollback Table Card -->
+          <div class="card mt-4">
+            <div class="card-header">
+              <div>
+                <span class="card-title">Stored Snapshots & Rollback History</span>
+                <p class="card-desc">Saved gateway configuration points. Roll back to any previous state in one click.</p>
+              </div>
+              <button type="button" id="btn-refresh-backups" class="btn btn-secondary btn-sm">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Refresh
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="services-table">
+                <thead>
+                  <tr>
+                    <th>Date & Time</th>
+                    <th>Description</th>
+                    <th>Size</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="backups-table-body">
+                  <tr>
+                    <td colspan="4" class="table-loading">Loading backup snapshots...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Maintenance / Danger Zone Card -->
+          <div class="card danger-card mt-4">
+            <div class="card-header">
+              <div class="card-icon-title">
+                <span class="modal-icon-badge">⚠️</span>
+                <span class="card-title text-danger">Appliance Maintenance & Danger Zone</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <p class="danger-desc">
+                Operations here affect the physical appliance state. Factory reset reverts Wi-Fi credentials to defaults and clears VPN profiles. A pre-reset backup is automatically saved.
+              </p>
+              <div class="danger-actions-row">
+                <button type="button" id="btn-trigger-reboot" class="btn btn-secondary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                  </svg>
+                  Reboot Gateway
+                </button>
+                <button type="button" id="btn-trigger-factory-reset" class="btn btn-danger">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                  Factory Reset
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Wi-Fi Apply Confirmation Modal -->
+  <div id="wifi-confirm-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-icon-badge">⚠️</span>
+          <h3 class="modal-title">Apply Wi-Fi Settings?</h3>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p class="modal-warning-text">Changing Wi-Fi settings may temporarily disconnect you.</p>
+        <div class="modal-diff-box">
+          <div class="diff-row">
+            <span class="diff-label">SSID:</span>
+            <span class="diff-val font-bold" id="modal-diff-ssid">freedom</span>
+          </div>
+          <div class="diff-row">
+            <span class="diff-label">Channel:</span>
+            <span class="diff-val" id="modal-diff-channel">6</span>
+          </div>
+          <div class="diff-row">
+            <span class="diff-label">Country:</span>
+            <span class="diff-val font-mono" id="modal-diff-country">RU</span>
+          </div>
+          <div class="diff-row">
+            <span class="diff-label">802.11n:</span>
+            <span class="diff-val font-bold" id="modal-diff-11n">ON</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-modal-wifi-cancel" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="btn-modal-wifi-confirm" class="btn btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-Run Onboarding Modal -->
+  <div id="auth-setup-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-icon-badge">🛡️</span>
+          <h3 class="modal-title">Welcome to VPN Gateway</h3>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p class="modal-warning-text">Set an administrator password to protect your gateway router Web UI and configurations.</p>
+        <form id="form-initial-setup" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label" for="setup-input-pass">Admin Password</label>
+            <input type="password" id="setup-input-pass" class="form-control" placeholder="Min. 6 characters" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="setup-input-confirm">Confirm Password</label>
+            <input type="password" id="setup-input-confirm" class="form-control" placeholder="Repeat password" required />
+          </div>
+          <div class="modal-footer" style="padding-top: 12px; margin-top: 14px;">
+            <button type="submit" id="btn-submit-setup" class="btn btn-primary" style="width: 100%;">
+              Set Password & Enter Gateway
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Login Lockscreen Modal -->
+  <div id="auth-login-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-icon-badge">🔒</span>
+          <h3 class="modal-title">Admin Authentication</h3>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p class="modal-warning-text">Enter your administrator password to access the gateway settings.</p>
+        <form id="form-login" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label" for="login-input-pass">Password</label>
+            <input type="password" id="login-input-pass" class="form-control" placeholder="••••••••" required />
+          </div>
+          <div class="modal-footer" style="padding-top: 12px; margin-top: 14px;">
+            <button type="submit" id="btn-submit-login" class="btn btn-primary" style="width: 100%;">
+              Unlock Gateway
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Restore Backup Confirmation Modal -->
+  <div id="backup-restore-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-icon-badge">🔄</span>
+          <h3 class="modal-title">Restore Configuration Snapshot?</h3>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p class="modal-warning-text">Restoring will overwrite current VPN, Wi-Fi, and network rules with the snapshot. Services will restart automatically.</p>
+        <div class="modal-diff-box">
+          <div class="diff-row">
+            <span class="diff-label">Snapshot ID:</span>
+            <span class="diff-val font-mono" id="modal-restore-id">--</span>
+          </div>
+          <div class="diff-row">
+            <span class="diff-label">Created:</span>
+            <span class="diff-val font-mono" id="modal-restore-date">--</span>
+          </div>
+          <div class="diff-row">
+            <span class="diff-label">Description:</span>
+            <span class="diff-val" id="modal-restore-desc">--</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-modal-restore-cancel" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="btn-modal-restore-confirm" class="btn btn-primary">Restore & Reload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Factory Reset Confirmation Modal -->
+  <div id="factory-reset-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-icon-badge">⚠️</span>
+          <h3 class="modal-title">Perform Factory Reset?</h3>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p class="modal-warning-text text-danger font-bold">This will reset Wi-Fi SSID back to 'freedom' (password: changeme123) and clear your active VLESS VPN profile.</p>
+        <p class="text-secondary" style="font-size: 12px; margin-top: 8px;">A safety snapshot will be automatically created before resetting so you can roll back at any time.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-modal-reset-cancel" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="btn-modal-reset-confirm" class="btn btn-danger">Yes, Reset Gateway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reboot Countdown Modal -->
+  <div id="reboot-modal" class="modal-backdrop hidden">
+    <div class="modal-card" style="text-align: center;">
+      <div class="modal-header" style="justify-content: center;">
+        <span style="font-size: 32px; display: inline-block; animation: spin 2s linear infinite;">⏳</span>
+      </div>
+      <div class="modal-body">
+        <h3 class="modal-title" style="margin-bottom: 8px;">Rebooting Gateway...</h3>
+        <p class="text-secondary" style="font-size: 13px;">The system is restarting. The web page will automatically reconnect once the gateway is back online.</p>
+        <div class="progress-bar-wrap" style="margin-top: 16px;">
+          <div class="progress-bar" id="reboot-progress-bar" style="width: 0%;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Vanilla App Script -->
+  <script src="/static/app.js"></script>
+</body>
+</html>

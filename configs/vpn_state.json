@@ -1,0 +1,16 @@
+{
+  "uuid": "33333333-4444-5555-6666-777777777777",
+  "address": "sub1.vpn.com",
+  "port": 443,
+  "transport": "tcp",
+  "security": "reality",
+  "flow": "xtls-rprx-vision",
+  "sni": "google.com",
+  "fingerprint": "chrome",
+  "publicKey": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+  "shortId": "9999",
+  "spiderX": "/",
+  "path": "/",
+  "host": "",
+  "remark": "Fast-US"
+}

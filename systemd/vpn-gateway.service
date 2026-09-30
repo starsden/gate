@@ -1,0 +1,23 @@
+[Unit]
+Description=VPN Gateway FastAPI Web Controller
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vpn-gateway
+ExecStart=/opt/vpn-gateway/venv/bin/uvicorn backend.app:app --host 0.0.0.0 --port 80
+Restart=always
+RestartSec=3
+KillMode=process
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+
+# Hardening
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
