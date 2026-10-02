@@ -166,6 +166,12 @@ REQUIRED_PACKAGES = [
         "description": "Управление параметрами ядра и системными процессами",
     },
     {
+        "name": "rfkill",
+        "title": "rfkill",
+        "binary": "rfkill",
+        "description": "Разблокировка радиомодулей беспроводной сети",
+    },
+    {
         "name": "xray",
         "title": "Xray Core",
         "binary": "xray",
@@ -300,6 +306,8 @@ def _package_installer_worker():
                 "iw",
                 "pciutils",
                 "procps",
+                "rfkill",
+                "wireless-regdb",
                 "ca-certificates",
                 "curl",
                 "tar",
@@ -513,6 +521,30 @@ def _final_setup_worker():
             wifi_iface = ifaces.get("lan") or wifi_iface
 
         _final_setup_state["logs"].append(f"Интерфейс WAN: {wan_iface}, Интерфейс Wi-Fi: {wifi_iface}")
+        if _is_linux():
+            try:
+                # 1. RF-kill unblock
+                subprocess.run(["rfkill", "unblock", "wifi"], capture_output=True, timeout=3)
+                subprocess.run(["rfkill", "unblock", "all"], capture_output=True, timeout=3)
+
+                # 2. Prevent NetworkManager from managing Wi-Fi AP interface
+                nm_conf_dir = Path("/etc/NetworkManager/conf.d")
+                if nm_conf_dir.exists():
+                    (nm_conf_dir / "99-unmanage-wlan.conf").write_text(f"[keyfile]\nunmanaged-devices=interface-name:{wifi_iface}\n")
+                    subprocess.run(["systemctl", "reload", "NetworkManager"], capture_output=True, timeout=3)
+
+                # 3. Terminate conflicting client wpa_supplicant on AP interface
+                subprocess.run(["wpa_cli", "-i", wifi_iface, "terminate"], capture_output=True, timeout=3)
+
+                # 4. Set regulatory domain
+                subprocess.run(["iw", "reg", "set", wifi_cfg.get("country", "RU")], capture_output=True, timeout=3)
+
+                # 5. Assign static IP to Wi-Fi interface and bring link UP
+                subprocess.run(["ip", "link", "set", wifi_iface, "up"], capture_output=True, timeout=3)
+                subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", wifi_iface], capture_output=True, timeout=3)
+                _final_setup_state["logs"].append(f"Интерфейс {wifi_iface} разблокирован (rfkill) и настроен (10.42.0.1/24).")
+            except Exception as e:
+                _final_setup_state["logs"].append(f"Предупреждение подготовки Wi-Fi интерфейса: {str(e)}")
         time.sleep(0.4)
 
         # Task 2: Kernel parameters / IPv4 Forwarding (30%)
@@ -568,7 +600,14 @@ rsn_pairwise=CCMP
                 hostapd_file.parent.mkdir(parents=True, exist_ok=True)
                 with open(hostapd_file, "w") as f:
                     f.write(hostapd_content)
+
+                # Debian requires DAEMON_CONF in /etc/default/hostapd
+                default_hostapd = Path("/etc/default/hostapd")
+                default_hostapd.parent.mkdir(parents=True, exist_ok=True)
+                default_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\n')
+
                 subprocess.run(["systemctl", "unmask", "hostapd"], capture_output=True, timeout=5)
+                subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=5)
                 _final_setup_state["logs"].append(f"Конфигурация hostapd сохранена (SSID: {ssid}, Channel: {channel}).")
             except Exception as e:
                 _final_setup_state["logs"].append(f"Предупреждение hostapd: {str(e)}")
@@ -653,7 +692,7 @@ table inet filter {{
 
 table ip nat {{
     chain postrouting {{
-        type filter hook postrouting priority srcnat; policy accept;
+        type nat hook postrouting priority srcnat; policy accept;
         
         # Masquerade traffic going to Xray TUN
         oif "xray0" masquerade
@@ -668,8 +707,13 @@ table ip nat {{
                 nft_file = Path("/etc/nftables.conf")
                 with open(nft_file, "w") as f:
                     f.write(nft_content)
-                subprocess.run(["nft", "-f", "/etc/nftables.conf"], capture_output=True, timeout=5)
-                _final_setup_state["logs"].append("Правила nftables применены.")
+                nft_bin = shutil.which("nft") or ("/usr/sbin/nft" if os.path.exists("/usr/sbin/nft") else "nft")
+                res_nft = subprocess.run([nft_bin, "-f", "/etc/nftables.conf"], capture_output=True, text=True, timeout=5)
+                if res_nft.returncode != 0:
+                    _final_setup_state["logs"].append(f"Ошибка загрузки nftables: {res_nft.stderr.strip()}")
+                else:
+                    _final_setup_state["logs"].append("Правила nftables успешно применены.")
+                subprocess.run(["systemctl", "enable", "nftables.service"], capture_output=True, timeout=5)
             except Exception as e:
                 _final_setup_state["logs"].append(f"Предупреждение nftables: {str(e)}")
         else:
@@ -714,14 +758,22 @@ table ip nat {{
 
         # Task 7: Start all system services (92%)
         _final_setup_state["progress"] = 92
-        _final_setup_state["current_task"] = "Запуск системных демонов (hostapd, dnsmasq, nftables, xray)..."
+        _final_setup_state["current_task"] = "Запуск системных демонов (nftables, hostapd, dnsmasq, xray)..."
         if _is_linux():
-            services = ["hostapd", "dnsmasq", "nftables", "xray", "vpn-gateway-routes"]
+            # Ensure Wi-Fi link is UP with static IP before starting hostapd & dnsmasq
+            subprocess.run(["ip", "link", "set", wifi_iface, "up"], capture_output=True, timeout=3)
+            subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", wifi_iface], capture_output=True, timeout=3)
+
+            services = ["nftables", "hostapd", "dnsmasq", "xray", "vpn-gateway-routes"]
             for s in services:
                 try:
+                    subprocess.run(["systemctl", "unmask", f"{s}.service"], capture_output=True, timeout=5)
                     subprocess.run(["systemctl", "enable", f"{s}.service"], capture_output=True, timeout=5)
-                    subprocess.run(["systemctl", "restart", f"{s}.service"], capture_output=True, timeout=10)
-                    _final_setup_state["logs"].append(f"Служба {s}.service запущена.")
+                    svc_res = subprocess.run(["systemctl", "restart", f"{s}.service"], capture_output=True, text=True, timeout=10)
+                    if svc_res.returncode == 0:
+                        _final_setup_state["logs"].append(f"Служба {s}.service успешно запущена.")
+                    else:
+                        _final_setup_state["logs"].append(f"Предупреждение при запуске {s}.service: {svc_res.stderr.strip()}")
                 except Exception as e:
                     _final_setup_state["logs"].append(f"Служба {s}: {str(e)}")
         else:

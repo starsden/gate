@@ -198,15 +198,43 @@ def get_policy_rules() -> List[str]:
     return rules
 
 
+def ensure_lan_interface() -> Tuple[bool, str]:
+    """Ensure wireless LAN interface is unblocked, brought UP, and assigned gateway IP."""
+    if not _is_linux():
+        return True, "Simulated dev environment"
+
+    ifaces = get_default_interfaces()
+    lan = ifaces["lan"]
+
+    # 1. Unblock rfkill
+    try:
+        subprocess.run(["rfkill", "unblock", "wifi"], capture_output=True, timeout=2)
+        subprocess.run(["rfkill", "unblock", "all"], capture_output=True, timeout=2)
+    except Exception:
+        pass
+
+    # 2. Assign IP and bring up
+    try:
+        subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", lan], capture_output=True, timeout=3)
+        res = subprocess.run(["ip", "link", "set", lan, "up"], capture_output=True, text=True, timeout=3)
+        if res.returncode != 0:
+            return False, f"Failed to bring up {lan}: {res.stderr.strip()}"
+        return True, f"Interface {lan} brought UP with 10.42.0.1/24"
+    except Exception as e:
+        return False, str(e)
+
+
 def sync_policy_routing() -> Dict[str, Any]:
     """
     Ensure policy routing table 100 is configured correctly.
     Applies:
-      1. ip rule from 10.42.0.0/24 lookup 100
-      2. 10.42.0.0/24 dev <wlan> table 100
-      3. 192.168.0.0/24 dev <wan> table 100
-      4. Direct route for VLESS server IP through WAN gateway (loop prevention!)
-      5. default dev xray0 table 100
+      1. Ensure Wi-Fi LAN interface is unblocked and UP with 10.42.0.1/24
+      2. ip rule from 10.42.0.0/24 lookup 100
+      3. 10.42.0.0/24 dev <wlan> table 100
+      4. 192.168.0.0/24 dev <wan> table 100
+      5. Direct route for VLESS server IP through WAN gateway (loop prevention!)
+      6. default dev xray0 table 100
+      7. Reload nftables ruleset if present
     """
     if not _is_linux() or not shutil.which("ip"):
         return {
@@ -214,6 +242,9 @@ def sync_policy_routing() -> Dict[str, Any]:
             "message": "Policy routing table 100 synchronized (simulated dev environment).",
             "table_100": get_policy_routes(),
         }
+
+    # Ensure LAN interface is UP and has IP
+    ensure_lan_interface()
 
     ifaces = get_default_interfaces()
     wan = ifaces["wan"]
@@ -252,6 +283,11 @@ def sync_policy_routing() -> Dict[str, Any]:
 
         # 5. Default route to xray0 TUN in table 100
         subprocess.run(["ip", "route", "replace", "default", "dev", "xray0", "table", "100"], check=False)
+
+        # 6. Ensure nftables ruleset is loaded into kernel
+        nft_bin = shutil.which("nft") or ("/usr/sbin/nft" if os.path.exists("/usr/sbin/nft") else None)
+        if nft_bin and os.path.exists("/etc/nftables.conf"):
+            subprocess.run([nft_bin, "-f", "/etc/nftables.conf"], capture_output=True, timeout=3)
 
         return {
             "success": True,

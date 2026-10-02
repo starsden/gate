@@ -365,15 +365,39 @@ def execute_auto_repair() -> Dict[str, Any]:
     except Exception as e:
         actions_taken.append(f"Failed to set ip_forward: {str(e)}")
 
-    # 2. Check and restart essential services
-    for svc in ("xray", "hostapd", "dnsmasq", "nftables"):
-        status = get_service_status(svc)
-        if status["status"] != "active":
-            res = restart_service(svc)
-            if res.get("success"):
-                actions_taken.append(f"Restarted inactive service {svc}.service")
-            else:
-                actions_taken.append(f"Attempted restart of {svc}.service: {res.get('error', 'error')}")
+    ifaces = get_default_interfaces()
+    lan_iface = ifaces["lan"]
+    wan_iface = ifaces["wan"]
+
+    # 2. Unblock RF, setup interface, and configure hostapd prerequisites
+    if _is_linux():
+        try:
+            # Unblock rfkill
+            subprocess.run(["rfkill", "unblock", "wifi"], capture_output=True, timeout=2)
+            subprocess.run(["rfkill", "unblock", "all"], capture_output=True, timeout=2)
+
+            # Prevent NetworkManager conflict
+            nm_conf_dir = Path("/etc/NetworkManager/conf.d")
+            if nm_conf_dir.exists():
+                (nm_conf_dir / "99-unmanage-wlan.conf").write_text(f"[keyfile]\nunmanaged-devices=interface-name:{lan_iface}\n")
+                subprocess.run(["systemctl", "reload", "NetworkManager"], capture_output=True, timeout=2)
+
+            # Terminate conflicting client wpa_supplicant on AP interface
+            subprocess.run(["wpa_cli", "-i", lan_iface, "terminate"], capture_output=True, timeout=2)
+
+            # Fix hostapd configuration in /etc/default/hostapd (Debian requirement)
+            def_hostapd = Path("/etc/default/hostapd")
+            def_hostapd.parent.mkdir(parents=True, exist_ok=True)
+            def_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\n')
+            subprocess.run(["systemctl", "unmask", "hostapd"], capture_output=True, timeout=2)
+            subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=2)
+
+            # Assign static IP and bring interface up
+            subprocess.run(["ip", "link", "set", lan_iface, "up"], capture_output=True, timeout=3)
+            subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", lan_iface], capture_output=True, timeout=3)
+            actions_taken.append(f"Interface {lan_iface} unblocked (rfkill) and configured with 10.42.0.1/24")
+        except Exception as e:
+            actions_taken.append(f"Wi-Fi interface prep warning: {str(e)}")
 
     # 3. Synchronize Table 100 Policy Routes
     sync_res = sync_policy_routing()
@@ -383,12 +407,21 @@ def execute_auto_repair() -> Dict[str, Any]:
         actions_taken.append(f"Sync routes notice: {sync_res.get('error') or sync_res.get('message')}")
 
     # 4. Re-apply nftables ruleset
-    ifaces = get_default_interfaces()
-    fw_res = apply_firewall_ruleset(wan_iface=ifaces["wan"], lan_iface=ifaces["lan"])
+    fw_res = apply_firewall_ruleset(wan_iface=wan_iface, lan_iface=lan_iface)
     if fw_res.get("success"):
         actions_taken.append("Reloaded nftables ruleset with NAT masquerade")
     else:
         actions_taken.append(f"Firewall reload notice: {fw_res.get('error') or fw_res.get('message')}")
+
+    # 5. Check and restart essential services
+    for svc in ("nftables", "hostapd", "dnsmasq", "xray"):
+        status = get_service_status(svc)
+        if status["status"] != "active":
+            res = restart_service(svc)
+            if res.get("success"):
+                actions_taken.append(f"Restarted inactive service {svc}.service")
+            else:
+                actions_taken.append(f"Attempted restart of {svc}.service: {res.get('error', 'error')}")
 
     # Allow a brief moment for daemons to settle
     time.sleep(0.5)

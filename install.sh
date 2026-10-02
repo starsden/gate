@@ -220,6 +220,7 @@ install_minimal_packages() {
     command -v pip3 >/dev/null 2>&1 || command -v pip >/dev/null 2>&1 || pkgs+=("python3-pip")
     command -v curl >/dev/null 2>&1 || pkgs+=("curl")
     command -v tar >/dev/null 2>&1 || pkgs+=("tar")
+    command -v rfkill >/dev/null 2>&1 || pkgs+=("rfkill")
 
     if [[ ${#pkgs[@]} -gt 0 ]]; then
         log_info "Installing minimal Python runtime: ${pkgs[*]}..."
@@ -231,6 +232,7 @@ install_minimal_packages() {
             python3-pip \
             curl \
             tar \
+            rfkill \
             ca-certificates
         log_success "Minimal prerequisites installed."
     else
@@ -392,22 +394,49 @@ EOF
 EOF
     fi
 
-    # Hostapd config
+    # Unblock RF
+    rfkill unblock wifi 2>/dev/null || true
+    rfkill unblock all 2>/dev/null || true
+
+    # Prevent NetworkManager conflict on Wi-Fi AP interface
+    mkdir -p /etc/NetworkManager/conf.d 2>/dev/null || true
+    cat <<EOF > /etc/NetworkManager/conf.d/99-unmanage-wlan.conf
+[keyfile]
+unmanaged-devices=interface-name:${WIFI_IFACE}
+EOF
+    systemctl reload NetworkManager 2>/dev/null || true
+
+    # Assign static IP and bring Wi-Fi link UP
+    ip addr replace 10.42.0.1/24 dev "${WIFI_IFACE}" 2>/dev/null || true
+    ip link set "${WIFI_IFACE}" up 2>/dev/null || true
+
+    # Hostapd config & Debian daemon defaults
     mkdir -p /etc/hostapd
     sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
         "${SOURCE_DIR}/configs/hostapd.conf" > /etc/hostapd/hostapd.conf
-    # Unmask hostapd on Debian
+    echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
     systemctl unmask hostapd 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
 
     # Dnsmasq config
     mkdir -p /etc/dnsmasq.d
     sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
         "${SOURCE_DIR}/configs/dnsmasq.conf" > /etc/dnsmasq.d/vpn-gateway.conf
 
-    # Nftables config
+    # Nftables config & load
     if [[ -f "${SOURCE_DIR}/configs/nftables.conf" ]]; then
         sed -e "s/wlp4s0/${WIFI_IFACE}/g" -e "s/enp3s0/${WAN_IFACE}/g" \
             "${SOURCE_DIR}/configs/nftables.conf" > /etc/nftables.conf
+        if command -v nft >/dev/null 2>&1; then
+            nft -f /etc/nftables.conf 2>/dev/null || true
+            systemctl enable --now nftables 2>/dev/null || true
+        fi
+    fi
+
+    # Install routing service
+    if [[ -f "${SOURCE_DIR}/systemd/vpn-gateway-routes.service" ]]; then
+        cp "${SOURCE_DIR}/systemd/vpn-gateway-routes.service" "${SYSTEMD_DIR}/"
+        systemctl enable vpn-gateway-routes.service 2>/dev/null || true
     fi
 }
 

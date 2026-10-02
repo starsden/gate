@@ -308,6 +308,39 @@ def apply_wifi_config(payload: Dict[str, Any]) -> Dict[str, Any]:
             f.write(new_content)
         temp_file.replace(target_file)
 
+        # 3.1 Ensure hostapd / interface prerequisites
+        try:
+            # Unblock RF
+            subprocess.run(["rfkill", "unblock", "wifi"], capture_output=True, timeout=2)
+            subprocess.run(["rfkill", "unblock", "all"], capture_output=True, timeout=2)
+
+            # Prevent NetworkManager conflict
+            nm_conf_dir = Path("/etc/NetworkManager/conf.d")
+            if nm_conf_dir.exists():
+                (nm_conf_dir / "99-unmanage-wlan.conf").write_text(f"[keyfile]\nunmanaged-devices=interface-name:{iface}\n")
+                subprocess.run(["systemctl", "reload", "NetworkManager"], capture_output=True, timeout=2)
+
+            # Kill conflicting wpa_supplicant
+            subprocess.run(["wpa_cli", "-i", iface, "terminate"], capture_output=True, timeout=2)
+
+            # Set regulatory domain
+            subprocess.run(["iw", "reg", "set", country], capture_output=True, timeout=2)
+
+            # Ensure /etc/default/hostapd has DAEMON_CONF
+            default_hostapd = Path("/etc/default/hostapd")
+            default_hostapd.parent.mkdir(parents=True, exist_ok=True)
+            default_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\n')
+
+            # Unmask hostapd
+            subprocess.run(["systemctl", "unmask", "hostapd"], capture_output=True, timeout=2)
+            subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=2)
+
+            # Bring interface UP with gateway IP
+            subprocess.run(["ip", "link", "set", iface, "up"], capture_output=True, timeout=2)
+            subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", iface], capture_output=True, timeout=2)
+        except Exception:
+            pass
+
         # 4. Restart hostapd service
         restart_res = subprocess.run(["systemctl", "restart", "hostapd.service"], capture_output=True, text=True, timeout=12)
 

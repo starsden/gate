@@ -21,26 +21,37 @@ def _is_linux() -> bool:
     return platform.system() == "Linux"
 
 
+def get_nft_binary() -> Optional[str]:
+    """Resolve absolute path to nft binary, checking sbin directories."""
+    which_path = shutil.which("nft")
+    if which_path:
+        return which_path
+    for p in ["/usr/sbin/nft", "/sbin/nft", "/usr/bin/nft", "/usr/local/sbin/nft"]:
+        if os.path.exists(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
 def get_firewall_status() -> Dict[str, Any]:
     """Check nftables service status, ruleset existence, and NAT forwarding chains."""
     from .system import get_service_status
     svc = get_service_status("nftables")
 
-    has_nft = shutil.which("nft") is not None
+    nft_bin = get_nft_binary()
     ruleset_loaded = False
     rules_count = 0
     nat_enabled = False
 
-    if has_nft and _is_linux():
+    if nft_bin and _is_linux():
         try:
-            res = subprocess.run(["nft", "list", "ruleset"], capture_output=True, text=True, timeout=3)
+            res = subprocess.run([nft_bin, "list", "ruleset"], capture_output=True, text=True, timeout=3)
             if "table" in res.stdout:
                 ruleset_loaded = True
                 rules_count = len([l for l in res.stdout.splitlines() if l.strip()])
                 nat_enabled = "masquerade" in res.stdout
         except Exception:
             pass
-    else:
+    elif not _is_linux():
         # Dev simulated active status
         ruleset_loaded = True
         rules_count = 32
@@ -98,7 +109,7 @@ table inet filter {{
 
 table ip nat {{
     chain postrouting {{
-        type filter hook postrouting priority srcnat; policy accept;
+        type nat hook postrouting priority srcnat; policy accept;
         
         # Masquerade traffic going to Xray TUN
         oif "{tun_iface}" masquerade
@@ -115,8 +126,9 @@ def apply_firewall_ruleset(wan_iface: str, lan_iface: str, tun_iface: str = "xra
     Validate and apply nftables ruleset with backup and rollback.
     """
     new_rules = generate_nftables_ruleset(wan_iface, lan_iface, tun_iface)
+    nft_bin = get_nft_binary()
 
-    if not _is_linux() or not shutil.which("nft"):
+    if not _is_linux() or not nft_bin:
         return {
             "success": True,
             "message": "Firewall rules generated and simulated (dev environment).",
@@ -140,7 +152,7 @@ def apply_firewall_ruleset(wan_iface: str, lan_iface: str, tun_iface: str = "xra
         with open(temp_file, "w") as f:
             f.write(new_rules)
 
-        test_res = subprocess.run(["nft", "-c", "-f", str(temp_file)], capture_output=True, text=True, timeout=5)
+        test_res = subprocess.run([nft_bin, "-c", "-f", str(temp_file)], capture_output=True, text=True, timeout=5)
         if test_res.returncode != 0:
             if temp_file.exists(): temp_file.unlink()
             return {"success": False, "error": f"nftables syntax check failed: {test_res.stderr.strip()}"}
@@ -148,16 +160,17 @@ def apply_firewall_ruleset(wan_iface: str, lan_iface: str, tun_iface: str = "xra
         # Apply atomically
         temp_file.replace(target_file)
 
-        # Reload nftables
-        reload_res = subprocess.run(["nft", "-f", str(target_file)], capture_output=True, text=True, timeout=5)
+        # Reload nftables into kernel
+        reload_res = subprocess.run([nft_bin, "-f", str(target_file)], capture_output=True, text=True, timeout=5)
         if reload_res.returncode != 0:
             # Rollback
             if backup_file and backup_file.exists():
                 shutil.copy2(backup_file, target_file)
-                subprocess.run(["nft", "-f", str(target_file)], check=False)
+                subprocess.run([nft_bin, "-f", str(target_file)], check=False)
             return {"success": False, "error": f"Failed to reload nftables: {reload_res.stderr.strip()}"}
 
-        # Restart nftables service if systemd is active
+        # Enable and restart nftables service if systemd is active
+        subprocess.run(["systemctl", "enable", "nftables.service"], check=False)
         subprocess.run(["systemctl", "restart", "nftables.service"], check=False)
 
         return {
@@ -168,5 +181,5 @@ def apply_firewall_ruleset(wan_iface: str, lan_iface: str, tun_iface: str = "xra
     except Exception as e:
         if backup_file and backup_file.exists() and target_file.exists():
             shutil.copy2(backup_file, target_file)
-            subprocess.run(["nft", "-f", str(target_file)], check=False)
+            subprocess.run([nft_bin, "-f", str(target_file)], check=False)
         return {"success": False, "error": f"Firewall apply error: {str(e)}"}

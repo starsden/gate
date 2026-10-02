@@ -444,7 +444,7 @@ def test_setup_service():
     print("[2.8/9] Testing setup.py service (Wizard lifecycle)...")
     chk = setup.check_system_packages()
     assert "all_installed" in chk
-    assert len(chk["packages"]) == 8
+    assert len(chk["packages"]) == len(setup.REQUIRED_PACKAGES)
 
     # Stage Wi-Fi
     ok, err = setup.save_wifi_stage_data({"ssid": "freedom-test", "password": "password123", "channel": 6, "country": "RU"})
