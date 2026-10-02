@@ -610,8 +610,8 @@
     }
 
     if (elements.dashMasterBadge) {
-      elements.dashMasterBadge.className = isConnected ? "hero-badge badge-active" : "hero-badge badge-danger";
-      elements.dashMasterBadge.textContent = isConnected ? "● Active" : "● Offline";
+      elements.dashMasterBadge.className = isConnected ? "paper-chip paper-chip-success" : "paper-chip paper-chip-danger";
+      elements.dashMasterBadge.textContent = isConnected ? "Active" : "Offline";
     }
 
     if (elements.vpnPageStatusBadge) {
@@ -675,7 +675,7 @@
         if (elements.dashWanGw) elements.dashWanGw.textContent = data.internet.gateway;
         if (elements.dashWanBadge) {
           const isWanUp = data.internet.status === "connected";
-          elements.dashWanBadge.className = isWanUp ? "status-badge badge-success" : "status-badge badge-danger";
+          elements.dashWanBadge.className = isWanUp ? "paper-chip paper-chip-success" : "paper-chip paper-chip-danger";
           elements.dashWanBadge.textContent = isWanUp ? "Connected" : "Disconnected";
         }
       }

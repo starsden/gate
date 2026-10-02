@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>VPN Gateway</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Roboto:wght@300;400;500;600&family=PT+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230a84ff'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z'/></svg>">
 </head>
@@ -203,200 +206,192 @@
 
         <!-- ================= DASHBOARD PAGE ================= -->
         <section id="page-dashboard" class="page-section active">
-          
-          <!-- Master Hero Card -->
-          <div class="hero-card">
-            <div class="hero-content">
-              <div class="hero-header">
-                <span class="hero-label">VPN GATEWAY STATUS</span>
-                <span class="hero-badge badge-active" id="dash-master-badge">● Active</span>
-              </div>
-              <div class="hero-title-row">
-                <h3 class="hero-title" id="dash-master-status">VPN Connected</h3>
-                <div class="hero-tags">
-                  <span class="hero-tag" id="dash-hero-proto">VLESS / REALITY</span>
-                  <span class="hero-tag" id="dash-hero-latency">42 ms</span>
-                </div>
+
+          <!-- Status Banner -->
+          <div class="paper-banner">
+            <div class="paper-banner-left">
+              <div class="paper-banner-eyebrow">VPN GATEWAY</div>
+              <h2 class="paper-banner-title" id="dash-master-status">VPN Connected</h2>
+              <div class="paper-banner-meta">
+                <span class="paper-chip paper-chip-success" id="dash-master-badge">Active</span>
+                <span class="paper-chip paper-chip-neutral" id="dash-hero-proto">VLESS / REALITY</span>
+                <span class="paper-chip paper-chip-neutral" id="dash-hero-latency">42 ms</span>
               </div>
             </div>
-            <div class="hero-actions">
-              <button id="btn-dash-restart-vpn" class="btn btn-secondary">
+            <div class="paper-banner-actions">
+              <button id="btn-dash-restart-vpn" class="paper-btn paper-btn-ghost">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
                 </svg>
                 Restart VPN
               </button>
-              <a href="#wifi" class="btn btn-primary">
-                Wi-Fi Settings
-              </a>
+              <a href="#wifi" class="paper-btn paper-btn-primary">Wi-Fi Settings</a>
             </div>
           </div>
 
-          <!-- Cards Grid -->
-          <div class="cards-grid">
-            
-            <!-- Internet Card -->
-            <div class="card stat-card">
-              <div class="card-header">
-                <div class="card-icon-title">
-                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <!-- Stat Cards Row -->
+          <div class="paper-cards-row">
+
+            <!-- Internet -->
+            <div class="paper-card">
+              <div class="paper-card-head">
+                <div class="paper-card-label-group">
+                  <svg class="paper-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                     <circle cx="12" cy="12" r="10"></circle>
                     <line x1="2" y1="12" x2="22" y2="12"></line>
                     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
                   </svg>
-                  <span class="card-title">Internet</span>
+                  <span class="paper-card-title">Internet</span>
                 </div>
-                <span class="status-badge badge-success" id="dash-wan-badge">Connected</span>
+                <span class="paper-chip paper-chip-success" id="dash-wan-badge">Connected</span>
               </div>
-              <div class="card-body">
-                <div class="stat-row">
-                  <span class="stat-label">Interface</span>
-                  <span class="stat-val font-mono" id="dash-wan-iface">enp3s0</span>
+              <div class="paper-card-body">
+                <div class="paper-kv-row">
+                  <span class="paper-kv-key">Interface</span>
+                  <span class="paper-kv-val paper-mono" id="dash-wan-iface">enp3s0</span>
                 </div>
-                <div class="stat-row">
-                  <span class="stat-label">IP Address</span>
-                  <span class="stat-val font-mono" id="dash-wan-ip">192.168.0.23</span>
+                <div class="paper-kv-row">
+                  <span class="paper-kv-key">IP Address</span>
+                  <span class="paper-kv-val paper-mono" id="dash-wan-ip">192.168.0.23</span>
                 </div>
-                <div class="stat-row">
-                  <span class="stat-label">Gateway</span>
-                  <span class="stat-val font-mono" id="dash-wan-gw">192.168.0.1</span>
+                <div class="paper-kv-row paper-kv-last">
+                  <span class="paper-kv-key">Gateway</span>
+                  <span class="paper-kv-val paper-mono" id="dash-wan-gw">192.168.0.1</span>
                 </div>
               </div>
             </div>
 
-            <!-- VPN Card -->
-            <div class="card stat-card">
-              <div class="card-header">
-                <div class="card-icon-title">
-                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <!-- VPN -->
+            <div class="paper-card">
+              <div class="paper-card-head">
+                <div class="paper-card-label-group">
+                  <svg class="paper-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                   </svg>
-                  <span class="card-title">VPN</span>
+                  <span class="paper-card-title">VPN</span>
                 </div>
-                <span class="status-badge badge-success" id="dash-vpn-badge">VLESS / REALITY</span>
+                <span class="paper-chip paper-chip-success" id="dash-vpn-badge">VLESS / REALITY</span>
               </div>
-              <div class="card-body">
-                <div class="stat-row">
-                  <span class="stat-label">Server</span>
-                  <span class="stat-val font-mono" id="dash-vpn-server">185.196.220.14:443</span>
+              <div class="paper-card-body">
+                <div class="paper-kv-row">
+                  <span class="paper-kv-key">Server</span>
+                  <span class="paper-kv-val paper-mono" id="dash-vpn-server">185.196.220.14:443</span>
                 </div>
-                <div class="stat-row">
-                  <span class="stat-label">SNI</span>
-                  <span class="stat-val font-mono" id="dash-vpn-sni">cloudflare.com</span>
+                <div class="paper-kv-row">
+                  <span class="paper-kv-key">SNI</span>
+                  <span class="paper-kv-val paper-mono" id="dash-vpn-sni">cloudflare.com</span>
                 </div>
-                <div class="stat-row">
-                  <span class="stat-label">Traffic</span>
-                  <span class="stat-val font-mono" id="dash-vpn-traffic">↓ 2.4 GB &nbsp; ↑ 410 MB</span>
+                <div class="paper-kv-row paper-kv-last">
+                  <span class="paper-kv-key">Traffic</span>
+                  <span class="paper-kv-val paper-mono" id="dash-vpn-traffic">↓ 2.4 GB &nbsp; ↑ 410 MB</span>
                 </div>
               </div>
             </div>
 
-            <!-- Wi-Fi Card -->
-            <div class="card stat-card">
-              <div class="card-header">
-                <div class="card-icon-title">
-                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <!-- Wi-Fi -->
+            <div class="paper-card">
+              <div class="paper-card-head">
+                <div class="paper-card-label-group">
+                  <svg class="paper-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                     <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
                     <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
                     <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
                     <line x1="12" y1="20" x2="12.01" y2="20"></line>
                   </svg>
-                  <span class="card-title">Wi-Fi</span>
+                  <span class="paper-card-title">Wi-Fi</span>
                 </div>
-                <span class="status-badge badge-success" id="dash-wifi-badge">Running</span>
+                <span class="paper-chip paper-chip-success" id="dash-wifi-badge">Running</span>
               </div>
-              <div class="card-body">
-                <div class="stat-row">
-                  <span class="stat-label">SSID</span>
-                  <span class="stat-val font-bold" id="dash-wifi-ssid">freedom</span>
+              <div class="paper-card-body">
+                <div class="paper-kv-row">
+                  <span class="paper-kv-key">SSID</span>
+                  <span class="paper-kv-val paper-bold" id="dash-wifi-ssid">freedom</span>
                 </div>
-                <div class="stat-row">
-                  <span class="stat-label">Channel</span>
-                  <span class="stat-val" id="dash-wifi-channel">6 (2.4 GHz)</span>
+                <div class="paper-kv-row">
+                  <span class="paper-kv-key">Channel</span>
+                  <span class="paper-kv-val" id="dash-wifi-channel">6 (2.4 GHz)</span>
                 </div>
-                <div class="stat-row">
-                  <span class="stat-label">Clients</span>
-                  <span class="stat-val font-bold" id="dash-wifi-clients">0 devices</span>
+                <div class="paper-kv-row paper-kv-last">
+                  <span class="paper-kv-key">Clients</span>
+                  <span class="paper-kv-val paper-bold" id="dash-wifi-clients">0 devices</span>
                 </div>
               </div>
             </div>
 
-            <!-- Traffic Throughput Card -->
-            <div class="card stat-card">
-              <div class="card-header">
-                <div class="card-icon-title">
-                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <!-- Bandwidth -->
+            <div class="paper-card">
+              <div class="paper-card-head">
+                <div class="paper-card-label-group">
+                  <svg class="paper-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                   </svg>
-                  <span class="card-title">Bandwidth</span>
+                  <span class="paper-card-title">Bandwidth</span>
                 </div>
-                <span class="badge-neutral" id="dash-latency-badge">42 ms</span>
+                <span class="paper-chip paper-chip-neutral" id="dash-latency-badge">42 ms</span>
               </div>
-              <div class="card-body speed-body">
-                <div class="speed-box">
-                  <span class="speed-arrow down">↓</span>
-                  <div class="speed-meta">
-                    <span class="speed-val" id="dash-speed-down">0.0</span>
-                    <span class="speed-unit">Mbps</span>
-                  </div>
-                  <span class="speed-name">Download</span>
+              <div class="paper-bw-body">
+                <div class="paper-bw-block">
+                  <span class="paper-bw-arrow paper-bw-down">↓</span>
+                  <span class="paper-bw-num" id="dash-speed-down">0.0</span>
+                  <span class="paper-bw-unit">Mbps</span>
+                  <span class="paper-bw-label">Download</span>
                 </div>
-                <div class="speed-divider"></div>
-                <div class="speed-box">
-                  <span class="speed-arrow up">↑</span>
-                  <div class="speed-meta">
-                    <span class="speed-val" id="dash-speed-up">0.0</span>
-                    <span class="speed-unit">Mbps</span>
-                  </div>
-                  <span class="speed-name">Upload</span>
+                <div class="paper-bw-sep"></div>
+                <div class="paper-bw-block">
+                  <span class="paper-bw-arrow paper-bw-up">↑</span>
+                  <span class="paper-bw-num" id="dash-speed-up">0.0</span>
+                  <span class="paper-bw-unit">Mbps</span>
+                  <span class="paper-bw-label">Upload</span>
                 </div>
               </div>
             </div>
 
           </div>
 
-          <!-- System Quick Overview Card -->
-          <div class="card system-quick-card">
-            <div class="card-header">
-              <span class="card-title">Hardware Resources</span>
-              <a href="#system" class="card-link">View Full System →</a>
+          <!-- Hardware Resources -->
+          <div class="paper-card paper-hw-card">
+            <div class="paper-card-head">
+              <span class="paper-card-title">Hardware Resources</span>
+              <a href="#system" class="paper-text-link">View Full System →</a>
             </div>
-            <div class="system-meters-row">
-              <div class="meter-item">
-                <div class="meter-head">
-                  <span class="meter-label">CPU Usage</span>
-                  <span class="meter-val font-mono" id="dash-cpu-pct">0%</span>
+            <div class="paper-hw-grid">
+
+              <div class="paper-meter">
+                <div class="paper-meter-head">
+                  <span class="paper-meter-label">CPU Usage</span>
+                  <span class="paper-meter-val paper-mono" id="dash-cpu-pct">0%</span>
                 </div>
-                <div class="progress-bar-wrap">
-                  <div class="progress-bar" id="dash-cpu-bar" style="width: 0%;"></div>
+                <div class="paper-track">
+                  <div class="paper-fill" id="dash-cpu-bar" style="width: 0%;"></div>
                 </div>
               </div>
 
-              <div class="meter-item">
-                <div class="meter-head">
-                  <span class="meter-label">RAM Usage</span>
-                  <span class="meter-val font-mono" id="dash-ram-pct">0%</span>
+              <div class="paper-meter">
+                <div class="paper-meter-head">
+                  <span class="paper-meter-label">RAM Usage</span>
+                  <span class="paper-meter-val paper-mono" id="dash-ram-pct">0%</span>
                 </div>
-                <div class="progress-bar-wrap">
-                  <div class="progress-bar" id="dash-ram-bar" style="width: 0%;"></div>
+                <div class="paper-track">
+                  <div class="paper-fill paper-fill-ram" id="dash-ram-bar" style="width: 0%;"></div>
                 </div>
-                <span class="meter-sub" id="dash-ram-sub">0.0 / 0.0 GB</span>
+                <span class="paper-meter-sub" id="dash-ram-sub">0.0 / 0.0 GB</span>
               </div>
 
-              <div class="meter-item">
-                <div class="meter-head">
-                  <span class="meter-label">Temperature</span>
-                  <span class="meter-val font-mono" id="dash-temp-val">--°C</span>
+              <div class="paper-meter">
+                <div class="paper-meter-head">
+                  <span class="paper-meter-label">Temperature</span>
+                  <span class="paper-meter-val paper-mono" id="dash-temp-val">--°C</span>
                 </div>
-                <div class="progress-bar-wrap">
-                  <div class="progress-bar progress-temp" id="dash-temp-bar" style="width: 45%;"></div>
+                <div class="paper-track">
+                  <div class="paper-fill paper-fill-temp" id="dash-temp-bar" style="width: 45%;"></div>
                 </div>
               </div>
 
-              <div class="meter-item uptime-item">
-                <span class="meter-label">Gateway Uptime</span>
-                <span class="meter-uptime-val font-mono" id="dash-uptime-val">--</span>
+              <div class="paper-meter paper-uptime-meter">
+                <span class="paper-meter-label">Gateway Uptime</span>
+                <span class="paper-uptime-val paper-mono" id="dash-uptime-val">--</span>
               </div>
+
             </div>
           </div>
 
