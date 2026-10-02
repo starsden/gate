@@ -268,6 +268,67 @@
     themeToggle: document.getElementById("theme-toggle"),
     mobileThemeToggle: document.getElementById("mobile-theme-toggle"),
     toastContainer: document.getElementById("toast-container"),
+
+    // Setup Wizard Elements
+    setupWizardContainer: document.getElementById("setup-wizard-container"),
+    appLayout: document.getElementById("app"),
+    navStep1: document.getElementById("nav-step-1"),
+    navStep2: document.getElementById("nav-step-2"),
+    navStep3: document.getElementById("nav-step-3"),
+    navStep4: document.getElementById("nav-step-4"),
+    navStep5: document.getElementById("nav-step-5"),
+    lineStep1: document.getElementById("line-step-1"),
+    lineStep2: document.getElementById("line-step-2"),
+    lineStep3: document.getElementById("line-step-3"),
+    lineStep4: document.getElementById("line-step-4"),
+    wizardPage1: document.getElementById("wizard-page-1"),
+    wizardPage2: document.getElementById("wizard-page-2"),
+    wizardPage3: document.getElementById("wizard-page-3"),
+    wizardPage4: document.getElementById("wizard-page-4"),
+    wizardPage5: document.getElementById("wizard-page-5"),
+    packagesSummaryBar: document.getElementById("packages-summary-bar"),
+    packagesSummaryText: document.getElementById("packages-summary-text"),
+    btnRefreshPackages: document.getElementById("btn-refresh-packages"),
+    packagesListGrid: document.getElementById("packages-list-grid"),
+    packagesActionBox: document.getElementById("packages-action-box"),
+    btnStartPackagesInstall: document.getElementById("btn-start-packages-install"),
+    packagesInstallProgressBox: document.getElementById("packages-install-progress-box"),
+    packagesProgressTask: document.getElementById("packages-progress-task"),
+    packagesProgressPct: document.getElementById("packages-progress-pct"),
+    packagesProgressBar: document.getElementById("packages-progress-bar"),
+    packagesTerminalLog: document.getElementById("packages-terminal-log"),
+    btnPackagesNext: document.getElementById("btn-packages-next"),
+    wizardWifiHwTitle: document.getElementById("wizard-wifi-hw-title"),
+    wizardWifiHwSub: document.getElementById("wizard-wifi-hw-sub"),
+    wizardWifiSsid: document.getElementById("wizard-wifi-ssid"),
+    wizardWifiPass: document.getElementById("wizard-wifi-pass"),
+    btnToggleWifiPass: document.getElementById("btn-toggle-wifi-pass"),
+    wizardWifiChannel: document.getElementById("wizard-wifi-channel"),
+    wizardWifiCountry: document.getElementById("wizard-wifi-country"),
+    btnWifiPrev: document.getElementById("btn-wifi-prev"),
+    btnWifiNext: document.getElementById("btn-wifi-next"),
+    wizardVpnInput: document.getElementById("wizard-vpn-input"),
+    wizardVpnInfoCard: document.getElementById("wizard-vpn-info-card"),
+    wizardVpnPreviewServer: document.getElementById("wizard-vpn-preview-server"),
+    wizardVpnPreviewProto: document.getElementById("wizard-vpn-preview-proto"),
+    wizardVpnPreviewSec: document.getElementById("wizard-vpn-preview-sec"),
+    wizardVpnSkipCheck: document.getElementById("wizard-vpn-skip-check"),
+    btnVpnPrev: document.getElementById("btn-vpn-prev"),
+    btnVpnNext: document.getElementById("btn-vpn-next"),
+    wizardAccountUser: document.getElementById("wizard-account-user"),
+    wizardAccountPass: document.getElementById("wizard-account-pass"),
+    wizardAccountConfirm: document.getElementById("wizard-account-confirm"),
+    btnToggleAdminPass: document.getElementById("btn-toggle-admin-pass"),
+    btnAccountPrev: document.getElementById("btn-account-prev"),
+    btnAccountNext: document.getElementById("btn-account-next"),
+    finalizeCurrentTask: document.getElementById("finalize-current-task"),
+    finalizeProgressPct: document.getElementById("finalize-progress-pct"),
+    finalizeProgressBar: document.getElementById("finalize-progress-bar"),
+    finalizeTerminalLog: document.getElementById("finalize-terminal-log"),
+    finalizeSuccessCard: document.getElementById("finalize-success-card"),
+    finalizeFooter: document.getElementById("finalize-footer"),
+    btnStartFinalize: document.getElementById("btn-start-finalize"),
+    btnGotoDashboard: document.getElementById("btn-goto-dashboard"),
   };
 
   // --------------------------------------------------------------------------
@@ -1844,18 +1905,40 @@
         }
       }
 
-      if (data.first_run) {
-        // Open first-run onboarding password dialog
-        if (elements.authSetupModal) elements.authSetupModal.classList.remove("hidden");
-        if (elements.authLoginModal) elements.authLoginModal.classList.add("hidden");
+      if (data.setup_required || data.first_run) {
+        // Launch multi-page setup wizard!
+        showSetupWizard();
+        if (elements.authSetupModal) {
+          elements.authSetupModal.classList.add("hidden");
+          elements.authSetupModal.classList.remove("active");
+        }
+        if (elements.authLoginModal) {
+          elements.authLoginModal.classList.add("hidden");
+          elements.authLoginModal.classList.remove("active");
+        }
       } else if (!data.authenticated) {
         // Open login lockscreen
-        if (elements.authSetupModal) elements.authSetupModal.classList.add("hidden");
-        if (elements.authLoginModal) elements.authLoginModal.classList.remove("hidden");
+        hideSetupWizard();
+        if (elements.authSetupModal) {
+          elements.authSetupModal.classList.add("hidden");
+          elements.authSetupModal.classList.remove("active");
+        }
+        if (elements.authLoginModal) {
+          elements.authLoginModal.classList.remove("hidden");
+          elements.authLoginModal.classList.add("active");
+          if (elements.loginInputPass) elements.loginInputPass.focus();
+        }
       } else {
         // Authenticated
-        if (elements.authSetupModal) elements.authSetupModal.classList.add("hidden");
-        if (elements.authLoginModal) elements.authLoginModal.classList.add("hidden");
+        hideSetupWizard();
+        if (elements.authSetupModal) {
+          elements.authSetupModal.classList.add("hidden");
+          elements.authSetupModal.classList.remove("active");
+        }
+        if (elements.authLoginModal) {
+          elements.authLoginModal.classList.add("hidden");
+          elements.authLoginModal.classList.remove("active");
+        }
       }
     } catch (err) {
       console.error("Failed to check auth status:", err);
@@ -2042,9 +2125,16 @@
       elements.btnAuthLogout.addEventListener("click", async () => {
         try {
           await fetch("/api/auth/logout", { method: "POST" });
+          document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
           showToast("Logged out successfully.", "info", 2000);
           state.isAuthenticated = false;
+          if (elements.loginInputPass) elements.loginInputPass.value = "";
           await checkAuthStatus();
+          if (elements.authLoginModal) {
+            elements.authLoginModal.classList.remove("hidden");
+            elements.authLoginModal.classList.add("active");
+            if (elements.loginInputPass) elements.loginInputPass.focus();
+          }
         } catch (err) {
           console.error("Logout error:", err);
         }
@@ -2478,6 +2568,556 @@
   }
 
   // --------------------------------------------------------------------------
+  // Setup Wizard Controller (Multi-step Onboarding)
+  // --------------------------------------------------------------------------
+  let wizardCurrentStep = 1;
+  let packagePollingInterval = null;
+  let finalizePollingInterval = null;
+
+  function showSetupWizard() {
+    if (elements.setupWizardContainer) {
+      elements.setupWizardContainer.classList.remove("hidden");
+    }
+    if (elements.appLayout) {
+      elements.appLayout.classList.add("hidden");
+    }
+    checkPackages();
+  }
+
+  function hideSetupWizard() {
+    if (elements.setupWizardContainer) {
+      elements.setupWizardContainer.classList.add("hidden");
+    }
+    if (elements.appLayout) {
+      elements.appLayout.classList.remove("hidden");
+    }
+  }
+
+  function setWizardStep(step) {
+    wizardCurrentStep = step;
+
+    // Toggle pages
+    const pages = [elements.wizardPage1, elements.wizardPage2, elements.wizardPage3, elements.wizardPage4, elements.wizardPage5];
+    pages.forEach((page, idx) => {
+      if (!page) return;
+      if (idx + 1 === step) {
+        page.classList.add("active");
+      } else {
+        page.classList.remove("active");
+      }
+    });
+
+    // Update Stepper nav
+    const navItems = [elements.navStep1, elements.navStep2, elements.navStep3, elements.navStep4, elements.navStep5];
+    const lines = [elements.lineStep1, elements.lineStep2, elements.lineStep3, elements.lineStep4];
+
+    navItems.forEach((item, idx) => {
+      if (!item) return;
+      const num = idx + 1;
+      const numSpan = item.querySelector(".step-num");
+      if (num < step) {
+        item.className = "wizard-step-item completed";
+        if (numSpan) numSpan.textContent = "✓";
+      } else if (num === step) {
+        item.className = "wizard-step-item active";
+        if (numSpan) numSpan.textContent = String(num);
+      } else {
+        item.className = "wizard-step-item";
+        if (numSpan) numSpan.textContent = String(num);
+      }
+    });
+
+    lines.forEach((line, idx) => {
+      if (!line) return;
+      if (idx + 1 < step) {
+        line.classList.add("active");
+      } else {
+        line.classList.remove("active");
+      }
+    });
+
+    // Scroll wizard container to top
+    if (elements.setupWizardContainer) {
+      elements.setupWizardContainer.scrollTop = 0;
+    }
+
+    // Step-specific initializers
+    if (step === 1) {
+      checkPackages();
+    } else if (step === 2) {
+      loadWizardWifi();
+    } else if (step === 3) {
+      loadWizardVpn();
+    }
+  }
+
+  async function checkPackages() {
+    if (!elements.packagesListGrid) return;
+    try {
+      if (elements.packagesSummaryText) elements.packagesSummaryText.textContent = "Проверка наличия компонентов...";
+      const res = await fetch("/api/setup/packages/check");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // Render packages
+      elements.packagesListGrid.innerHTML = "";
+      (data.packages || []).forEach((pkg) => {
+        const item = document.createElement("div");
+        item.className = "package-item-card";
+        const isInst = pkg.installed;
+        item.innerHTML = `
+          <div class="pkg-info">
+            <span class="pkg-title">${escapeHtml(pkg.title)} (${escapeHtml(pkg.binary)})</span>
+            <span class="pkg-desc">${escapeHtml(pkg.description)}</span>
+          </div>
+          <span class="pkg-status-badge ${isInst ? "pkg-status-installed" : "pkg-status-missing"}">
+            ${isInst ? "✓ Установлен" : "✕ Отсутствует"}
+          </span>
+        `;
+        elements.packagesListGrid.appendChild(item);
+      });
+
+      if (data.all_installed) {
+        if (elements.packagesSummaryText) {
+          elements.packagesSummaryText.textContent = `✅ Все необходимые системные компоненты (${data.installed_count}/${data.total}) установлены.`;
+        }
+        if (elements.btnPackagesNext) elements.btnPackagesNext.disabled = false;
+        if (elements.packagesActionBox) elements.packagesActionBox.classList.add("hidden");
+      } else {
+        if (elements.packagesSummaryText) {
+          elements.packagesSummaryText.textContent = `⚠️ Отсутствуют компоненты: ${data.missing_count} из ${data.total}. Требуется установка.`;
+        }
+        if (elements.btnPackagesNext) elements.btnPackagesNext.disabled = true;
+        if (elements.packagesActionBox) elements.packagesActionBox.classList.remove("hidden");
+      }
+    } catch (err) {
+      console.error("Failed to check packages:", err);
+      if (elements.packagesSummaryText) {
+        elements.packagesSummaryText.textContent = `Ошибка проверки пакетов: ${err.message}`;
+      }
+    }
+  }
+
+  async function startPackagesInstall() {
+    if (elements.btnStartPackagesInstall) {
+      elements.btnStartPackagesInstall.disabled = true;
+      elements.btnStartPackagesInstall.textContent = "Запуск установки...";
+    }
+    if (elements.packagesInstallProgressBox) {
+      elements.packagesInstallProgressBox.classList.remove("hidden");
+    }
+
+    try {
+      const res = await fetch("/api/setup/packages/install", { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // Start polling
+      if (packagePollingInterval) clearInterval(packagePollingInterval);
+      packagePollingInterval = setInterval(pollPackagesInstallProgress, 600);
+    } catch (err) {
+      showToast(`Ошибка запуска установки: ${err.message}`, "danger", 4000);
+      if (elements.btnStartPackagesInstall) {
+        elements.btnStartPackagesInstall.disabled = false;
+        elements.btnStartPackagesInstall.textContent = "🚀 Повторить установку пакетов";
+      }
+    }
+  }
+
+  async function pollPackagesInstallProgress() {
+    try {
+      const res = await fetch("/api/setup/packages/progress");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (elements.packagesProgressBar) {
+        elements.packagesProgressBar.style.width = `${data.progress || 0}%`;
+      }
+      if (elements.packagesProgressPct) {
+        elements.packagesProgressPct.textContent = `${data.progress || 0}%`;
+      }
+      if (elements.packagesProgressTask) {
+        elements.packagesProgressTask.textContent = data.message || "Установка...";
+      }
+      if (elements.packagesTerminalLog && data.logs) {
+        elements.packagesTerminalLog.textContent = data.logs.join("\n");
+        elements.packagesTerminalLog.scrollTop = elements.packagesTerminalLog.scrollHeight;
+      }
+
+      if (data.status === "completed") {
+        clearInterval(packagePollingInterval);
+        packagePollingInterval = null;
+        showToast("Все компоненты успешно установлены!", "success", 4000);
+        await checkPackages();
+        if (elements.btnPackagesNext) elements.btnPackagesNext.disabled = false;
+        if (elements.btnStartPackagesInstall) {
+          elements.btnStartPackagesInstall.textContent = "✓ Пакеты установлены";
+        }
+      } else if (data.status === "error") {
+        clearInterval(packagePollingInterval);
+        packagePollingInterval = null;
+        showToast(`Ошибка установки: ${data.error || "Неизвестная ошибка"}`, "danger", 5000);
+        if (elements.btnStartPackagesInstall) {
+          elements.btnStartPackagesInstall.disabled = false;
+          elements.btnStartPackagesInstall.textContent = "🚀 Повторить установку пакетов";
+        }
+      }
+    } catch (err) {
+      console.warn("Poll packages install error:", err);
+    }
+  }
+
+  async function loadWizardWifi() {
+    try {
+      const res = await fetch("/api/setup/wifi");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (elements.wizardWifiHwTitle && data.hardware) {
+        elements.wizardWifiHwTitle.textContent = `${data.hardware.chipset || "Wi-Fi Адаптер"} (${data.hardware.driver || "nl80211"})`;
+      }
+      if (elements.wizardWifiHwSub) {
+        const apStr = data.hardware?.ap_supported ? "Поддержка AP: Да" : "Поддержка AP: Проверяется";
+        elements.wizardWifiHwSub.textContent = `Интерфейс: ${data.interface} | ${apStr}`;
+      }
+      if (elements.wizardWifiSsid && data.ssid) {
+        elements.wizardWifiSsid.value = data.ssid;
+      }
+      if (elements.wizardWifiPass && data.password) {
+        elements.wizardWifiPass.value = data.password;
+      }
+      if (elements.wizardWifiChannel && data.channel) {
+        elements.wizardWifiChannel.value = String(data.channel);
+      }
+      if (elements.wizardWifiCountry && data.country) {
+        elements.wizardWifiCountry.value = data.country;
+      }
+    } catch (err) {
+      console.warn("Failed to load wizard wifi data:", err);
+    }
+  }
+
+  async function saveWizardWifi() {
+    const ssid = elements.wizardWifiSsid?.value.trim() || "";
+    const pass = elements.wizardWifiPass?.value.trim() || "";
+    const channel = parseInt(elements.wizardWifiChannel?.value || "6", 10);
+    const country = elements.wizardWifiCountry?.value || "RU";
+
+    if (!ssid || ssid.length > 32) {
+      showToast("Имя сети (SSID) должно содержать от 1 до 32 символов.", "danger", 3000);
+      return false;
+    }
+    if (pass.length < 8 || pass.length > 63) {
+      showToast("Пароль WPA2 должен содержать от 8 до 63 символов.", "danger", 3000);
+      return false;
+    }
+
+    try {
+      const res = await fetch("/api/setup/wifi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ssid, password: pass, channel, country }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || "Failed to save Wi-Fi");
+      return true;
+    } catch (err) {
+      showToast(`Ошибка сохранения Wi-Fi: ${err.message}`, "danger", 4000);
+      return false;
+    }
+  }
+
+  async function loadWizardVpn() {
+    try {
+      const res = await fetch("/api/setup/vpn");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (elements.wizardVpnInput && data.vless_uri) {
+        elements.wizardVpnInput.value = data.vless_uri;
+        updateVpnPreview(data.vless_uri);
+      }
+      if (elements.wizardVpnSkipCheck && data.skip) {
+        elements.wizardVpnSkipCheck.checked = true;
+      }
+    } catch (err) {
+      console.warn("Failed to load wizard VPN:", err);
+    }
+  }
+
+  function updateVpnPreview(uri) {
+    if (!elements.wizardVpnInfoCard) return;
+    const clean = (uri || "").trim();
+    if (clean.startsWith("vless://")) {
+      elements.wizardVpnInfoCard.classList.remove("hidden");
+      try {
+        const parsed = new URL(clean.replace("vless://", "http://"));
+        if (elements.wizardVpnPreviewServer) elements.wizardVpnPreviewServer.textContent = parsed.hostname;
+        if (elements.wizardVpnPreviewProto) elements.wizardVpnPreviewProto.textContent = `VLESS (порт ${parsed.port || 443})`;
+        const sec = parsed.searchParams.get("security") || (parsed.searchParams.get("pbk") ? "reality" : "tls");
+        if (elements.wizardVpnPreviewSec) elements.wizardVpnPreviewSec.textContent = sec.toUpperCase();
+      } catch (e) {
+        elements.wizardVpnInfoCard.classList.add("hidden");
+      }
+    } else if (clean.startsWith("http://") || clean.startsWith("https://")) {
+      elements.wizardVpnInfoCard.classList.remove("hidden");
+      if (elements.wizardVpnPreviewServer) elements.wizardVpnPreviewServer.textContent = "Подписка VPN";
+      if (elements.wizardVpnPreviewProto) elements.wizardVpnPreviewProto.textContent = "HTTP(S) Subscription";
+      if (elements.wizardVpnPreviewSec) elements.wizardVpnPreviewSec.textContent = "AUTO";
+    } else {
+      elements.wizardVpnInfoCard.classList.add("hidden");
+    }
+  }
+
+  async function saveWizardVpn() {
+    const skip = elements.wizardVpnSkipCheck ? elements.wizardVpnSkipCheck.checked : false;
+    const uri = elements.wizardVpnInput?.value.trim() || "";
+
+    if (!skip && !uri) {
+      if (!confirm("Ссылка на VPN не указана. Пропустить настройку VPN и настроить позже в дашборде?")) {
+        return false;
+      }
+    }
+
+    try {
+      const res = await fetch("/api/setup/vpn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vless_uri: uri, skip: skip || !uri }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || "Failed to save VPN");
+      return true;
+    } catch (err) {
+      showToast(`Ошибка сохранения VPN: ${err.message}`, "danger", 4000);
+      return false;
+    }
+  }
+
+  async function saveWizardAccount() {
+    const user = elements.wizardAccountUser?.value.trim() || "admin";
+    const pass = elements.wizardAccountPass?.value.trim() || "";
+    const confirmPass = elements.wizardAccountConfirm?.value.trim() || "";
+
+    if (pass.length < 6) {
+      showToast("Пароль администратора должен быть не менее 6 символов.", "danger", 3000);
+      return false;
+    }
+    if (pass !== confirmPass) {
+      showToast("Пароли не совпадают. Пожалуйста, повторите ввод.", "danger", 3000);
+      return false;
+    }
+
+    try {
+      const res = await fetch("/api/setup/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user, password: pass, confirm_password: confirmPass }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || "Failed to save account");
+      return true;
+    } catch (err) {
+      showToast(`Ошибка настройки аккаунта: ${err.message}`, "danger", 4000);
+      return false;
+    }
+  }
+
+  async function startFinalizeSetup() {
+    if (elements.btnStartFinalize) {
+      elements.btnStartFinalize.disabled = true;
+      elements.btnStartFinalize.textContent = "Выполняется настройка системы...";
+    }
+
+    try {
+      const res = await fetch("/api/setup/finalize", { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      if (finalizePollingInterval) clearInterval(finalizePollingInterval);
+      finalizePollingInterval = setInterval(pollFinalizeProgress, 500);
+    } catch (err) {
+      showToast(`Ошибка запуска финализации: ${err.message}`, "danger", 4000);
+      if (elements.btnStartFinalize) {
+        elements.btnStartFinalize.disabled = false;
+        elements.btnStartFinalize.textContent = "⚙️ Запустить окончательную настройку системы";
+      }
+    }
+  }
+
+  function updateFinalizeTaskUI(progress) {
+    const setTaskStatus = (id, iconId, isDone, isRunning) => {
+      const el = document.getElementById(id);
+      const icon = document.getElementById(iconId);
+      if (!el || !icon) return;
+      if (isDone) {
+        el.className = "task-item done";
+        icon.textContent = "✅";
+      } else if (isRunning) {
+        el.className = "task-item running";
+        icon.textContent = "🔄";
+      } else {
+        el.className = "task-item";
+        icon.textContent = "⏳";
+      }
+    };
+
+    setTaskStatus("task-net", "task-icon-net", progress >= 15, progress < 15);
+    setTaskStatus("task-wifi", "task-icon-wifi", progress >= 35, progress >= 15 && progress < 35);
+    setTaskStatus("task-dhcp", "task-icon-dhcp", progress >= 50, progress >= 35 && progress < 50);
+    setTaskStatus("task-firewall", "task-icon-firewall", progress >= 65, progress >= 50 && progress < 65);
+    setTaskStatus("task-routing", "task-icon-routing", progress >= 75, progress >= 65 && progress < 75);
+    setTaskStatus("task-vpn", "task-icon-vpn", progress >= 85, progress >= 75 && progress < 85);
+    setTaskStatus("task-services", "task-icon-services", progress >= 95, progress >= 85 && progress < 95);
+    setTaskStatus("task-account", "task-icon-account", progress >= 100, progress >= 95 && progress < 100);
+  }
+
+  async function pollFinalizeProgress() {
+    try {
+      const res = await fetch("/api/setup/finalize/progress");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      const pct = data.progress || 0;
+      if (elements.finalizeProgressBar) {
+        elements.finalizeProgressBar.style.width = `${pct}%`;
+      }
+      if (elements.finalizeProgressPct) {
+        elements.finalizeProgressPct.textContent = `${pct}%`;
+      }
+      if (elements.finalizeCurrentTask) {
+        elements.finalizeCurrentTask.textContent = data.current_task || "Настройка параметров...";
+      }
+
+      updateFinalizeTaskUI(pct);
+
+      if (elements.finalizeTerminalLog && data.logs) {
+        elements.finalizeTerminalLog.textContent = data.logs.join("\n");
+        elements.finalizeTerminalLog.scrollTop = elements.finalizeTerminalLog.scrollHeight;
+      }
+
+      if (data.status === "completed") {
+        clearInterval(finalizePollingInterval);
+        finalizePollingInterval = null;
+
+        updateFinalizeTaskUI(100);
+        if (elements.finalizeProgressBar) elements.finalizeProgressBar.style.width = "100%";
+        if (elements.finalizeProgressPct) elements.finalizeProgressPct.textContent = "100%";
+        if (elements.finalizeSuccessCard) elements.finalizeSuccessCard.classList.remove("hidden");
+        if (elements.finalizeFooter) elements.finalizeFooter.classList.add("hidden");
+
+        showToast("🎉 Шлюз успешно настроен и готов к работе!", "success", 5000);
+
+        // Auto transition after 2.5 seconds
+        setTimeout(() => {
+          completeSetupAndOpenDashboard();
+        }, 2500);
+      } else if (data.status === "error") {
+        clearInterval(finalizePollingInterval);
+        finalizePollingInterval = null;
+        showToast(`Ошибка применения настроек: ${data.error}`, "danger", 5000);
+        if (elements.btnStartFinalize) {
+          elements.btnStartFinalize.disabled = false;
+          elements.btnStartFinalize.textContent = "⚙️ Повторить настройку системы";
+        }
+      }
+    } catch (err) {
+      console.warn("Poll finalize error:", err);
+    }
+  }
+
+  async function completeSetupAndOpenDashboard() {
+    hideSetupWizard();
+    state.isAuthenticated = true;
+    state.isFirstRun = false;
+    await checkAuthStatus();
+    await fetchInitialData();
+    window.location.hash = "#dashboard";
+    showToast("Добро пожаловать в дашборд VPN Gateway!", "success", 4000);
+  }
+
+  function initSetupWizard() {
+    // Page 1 Buttons
+    if (elements.btnRefreshPackages) {
+      elements.btnRefreshPackages.addEventListener("click", () => checkPackages());
+    }
+    if (elements.btnStartPackagesInstall) {
+      elements.btnStartPackagesInstall.addEventListener("click", () => startPackagesInstall());
+    }
+    if (elements.btnPackagesNext) {
+      elements.btnPackagesNext.addEventListener("click", () => setWizardStep(2));
+    }
+
+    // Page 2 Buttons (Wi-Fi)
+    if (elements.btnToggleWifiPass && elements.wizardWifiPass) {
+      elements.btnToggleWifiPass.addEventListener("click", () => {
+        const isPass = elements.wizardWifiPass.type === "password";
+        elements.wizardWifiPass.type = isPass ? "text" : "password";
+      });
+    }
+    if (elements.btnWifiPrev) {
+      elements.btnWifiPrev.addEventListener("click", () => setWizardStep(1));
+    }
+    if (elements.btnWifiNext) {
+      elements.btnWifiNext.addEventListener("click", async () => {
+        const ok = await saveWizardWifi();
+        if (ok) setWizardStep(3);
+      });
+    }
+
+    // Page 3 Buttons (VPN)
+    if (elements.wizardVpnInput) {
+      elements.wizardVpnInput.addEventListener("input", (e) => updateVpnPreview(e.target.value));
+    }
+    if (elements.wizardVpnSkipCheck && elements.wizardVpnInput) {
+      elements.wizardVpnSkipCheck.addEventListener("change", (e) => {
+        elements.wizardVpnInput.disabled = e.target.checked;
+        if (e.target.checked && elements.wizardVpnInfoCard) {
+          elements.wizardVpnInfoCard.classList.add("hidden");
+        }
+      });
+    }
+    if (elements.btnVpnPrev) {
+      elements.btnVpnPrev.addEventListener("click", () => setWizardStep(2));
+    }
+    if (elements.btnVpnNext) {
+      elements.btnVpnNext.addEventListener("click", async () => {
+        const ok = await saveWizardVpn();
+        if (ok) setWizardStep(4);
+      });
+    }
+
+    // Page 4 Buttons (Account)
+    if (elements.btnToggleAdminPass && elements.wizardAccountPass) {
+      elements.btnToggleAdminPass.addEventListener("click", () => {
+        const isPass = elements.wizardAccountPass.type === "password";
+        elements.wizardAccountPass.type = isPass ? "text" : "password";
+        if (elements.wizardAccountConfirm) {
+          elements.wizardAccountConfirm.type = isPass ? "text" : "password";
+        }
+      });
+    }
+    if (elements.btnAccountPrev) {
+      elements.btnAccountPrev.addEventListener("click", () => setWizardStep(3));
+    }
+    if (elements.btnAccountNext) {
+      elements.btnAccountNext.addEventListener("click", async () => {
+        const ok = await saveWizardAccount();
+        if (ok) {
+          setWizardStep(5);
+          startFinalizeSetup();
+        }
+      });
+    }
+
+    // Page 5 Buttons (Finalize)
+    if (elements.btnStartFinalize) {
+      elements.btnStartFinalize.addEventListener("click", () => startFinalizeSetup());
+    }
+    if (elements.btnGotoDashboard) {
+      elements.btnGotoDashboard.addEventListener("click", () => completeSetupAndOpenDashboard());
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // Application Bootstrap
   // --------------------------------------------------------------------------
 
@@ -2489,6 +3129,7 @@
     initNetworkActions();
     initDiagnosticsActions();
     initAuthAndSettingsActions();
+    initSetupWizard();
     initLogsActions();
     fetchInitialData();
     initRealtimeStream();

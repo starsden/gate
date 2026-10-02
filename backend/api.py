@@ -21,6 +21,7 @@ from .services import diagnostics as diagnostics_service
 from .services import auth as auth_service
 from .services import backups as backups_service
 from .services import subscription as subscription_service
+from .services import setup as setup_service
 
 router = APIRouter(prefix="/api")
 
@@ -325,13 +326,144 @@ def run_auto_repair() -> Dict[str, Any]:
 
 
 # -------------------------------------------------------------
+# Setup Wizard Endpoints (Multi-step Onboarding)
+# -------------------------------------------------------------
+
+@router.get("/setup/status")
+def get_setup_wizard_status() -> Dict[str, Any]:
+    """Retrieve setup wizard progress, step, and flags."""
+    state = setup_service.load_setup_state()
+    return {
+        "completed": setup_service.is_setup_completed(),
+        "state": state,
+    }
+
+
+@router.get("/setup/packages/check")
+def check_packages_endpoint() -> Dict[str, Any]:
+    """Inspect missing system packages and tools."""
+    return setup_service.check_system_packages()
+
+
+@router.post("/setup/packages/install")
+def install_packages_endpoint() -> Dict[str, Any]:
+    """Trigger background installation of missing packages."""
+    return setup_service.start_package_installation()
+
+
+@router.get("/setup/packages/progress")
+def get_packages_progress_endpoint() -> Dict[str, Any]:
+    """Poll installation status and logs."""
+    return setup_service.get_package_install_status()
+
+
+@router.get("/setup/packages/stream")
+async def stream_packages_progress():
+    """SSE real-time stream of package installation progress."""
+    async def event_generator():
+        while True:
+            data = setup_service.get_package_install_status()
+            yield f"data: {json.dumps(data)}\n\n"
+            if data["status"] in ("completed", "error"):
+                break
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.get("/setup/wifi")
+def get_setup_wifi_endpoint() -> Dict[str, Any]:
+    """Retrieve hardware detection and staged Wi-Fi parameters."""
+    return setup_service.get_wifi_stage_data()
+
+
+@router.post("/setup/wifi")
+def save_setup_wifi_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Save Wi-Fi parameters for initial configuration."""
+    success, err = setup_service.save_wifi_stage_data(payload)
+    if not success:
+        raise HTTPException(status_code=400, detail=err or "Invalid Wi-Fi parameters")
+    return {"success": True, "message": "Wi-Fi parameters saved"}
+
+
+@router.get("/setup/vpn")
+def get_setup_vpn_endpoint() -> Dict[str, Any]:
+    """Retrieve staged VPN parameters."""
+    return setup_service.get_vpn_stage_data()
+
+
+@router.post("/setup/vpn")
+def save_setup_vpn_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Save initial VPN parameters (or skip)."""
+    success, err = setup_service.save_vpn_stage_data(payload)
+    if not success:
+        raise HTTPException(status_code=400, detail=err or "Invalid VPN URI")
+    return {"success": True, "message": "VPN configuration saved"}
+
+
+@router.post("/setup/account")
+def save_setup_account_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Save dashboard administrator credentials."""
+    success, err = setup_service.save_account_stage_data(payload)
+    if not success:
+        raise HTTPException(status_code=400, detail=err or "Invalid account parameters")
+    return {"success": True, "message": "Admin credentials staged"}
+
+
+@router.post("/setup/finalize")
+def finalize_setup_endpoint() -> Dict[str, Any]:
+    """Execute final system configuration tasks in background."""
+    return setup_service.start_final_setup()
+
+
+@router.get("/setup/finalize/progress")
+def get_finalize_progress_endpoint(response: Response) -> Dict[str, Any]:
+    """Poll final setup execution status, progress, and logs."""
+    res = setup_service.get_final_setup_status()
+    if res.get("token") and res.get("status") == "completed":
+        response.set_cookie(
+            key="session_token",
+            value=res["token"],
+            path="/",
+            httponly=True,
+            samesite="lax",
+            max_age=auth_service.SESSION_TTL_SECONDS,
+        )
+    return res
+
+
+@router.get("/setup/finalize/stream")
+async def stream_finalize_progress():
+    """SSE real-time stream of final setup execution."""
+    async def event_generator():
+        while True:
+            data = setup_service.get_final_setup_status()
+            yield f"data: {json.dumps(data)}\n\n"
+            if data["status"] in ("completed", "error"):
+                break
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+# -------------------------------------------------------------
 # Authentication Endpoints (Phase 6)
 # -------------------------------------------------------------
 
 @router.get("/auth/status")
 def auth_status(request: Request) -> Dict[str, Any]:
     token = get_current_token(request)
-    return auth_service.get_auth_status(token)
+    status = auth_service.get_auth_status(token)
+    status["setup_required"] = not setup_service.is_setup_completed()
+    return status
 
 
 @router.post("/auth/setup")
@@ -340,7 +472,7 @@ def auth_setup(payload: Dict[str, str], response: Response) -> Dict[str, Any]:
     success, token, err = auth_service.setup_initial_password(pwd)
     if not success:
         raise HTTPException(status_code=400, detail=err or "Setup failed")
-    response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax", max_age=auth_service.SESSION_TTL_SECONDS)
+    response.set_cookie(key="session_token", value=token, path="/", httponly=True, samesite="lax", max_age=auth_service.SESSION_TTL_SECONDS)
     return {"success": True, "token": token, "username": "admin"}
 
 
@@ -350,7 +482,7 @@ def auth_login(payload: Dict[str, str], response: Response) -> Dict[str, Any]:
     success, token, err = auth_service.authenticate(pwd)
     if not success:
         raise HTTPException(status_code=401, detail=err or "Invalid credentials")
-    response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax", max_age=auth_service.SESSION_TTL_SECONDS)
+    response.set_cookie(key="session_token", value=token, path="/", httponly=True, samesite="lax", max_age=auth_service.SESSION_TTL_SECONDS)
     return {"success": True, "token": token, "username": "admin"}
 
 
@@ -358,7 +490,7 @@ def auth_login(payload: Dict[str, str], response: Response) -> Dict[str, Any]:
 def auth_logout(request: Request, response: Response) -> Dict[str, Any]:
     token = get_current_token(request)
     auth_service.revoke_session(token)
-    response.delete_cookie(key="session_token")
+    response.delete_cookie(key="session_token", path="/")
     return {"success": True, "message": "Logged out successfully"}
 
 

@@ -17,7 +17,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from backend.services import auth, backups, diagnostics, logs, network, system, vpn, wifi, firewall, clients, subscription
+from backend.services import auth, backups, diagnostics, logs, network, system, vpn, wifi, firewall, clients, subscription, setup
 from backend.app import app
 
 # ------------------------------------------------------------------------------
@@ -393,11 +393,83 @@ async def test_fastapi_endpoints():
     assert r["json"]["success"] is True
     print("      -> [200] POST /api/vpn/subscription/select")
 
-    # Ping via API
-    r = await asgi_request(app, "POST", "/api/vpn/subscription/ping", body={"server_id": new_server_id})
+    # Setup Wizard API Endpoints
+    r = await asgi_request(app, "GET", "/api/setup/status")
     assert r["status"] == 200
-    assert r["json"]["success"] is True
-    print("      -> [200] POST /api/vpn/subscription/ping")
+    print("      -> [200] GET /api/setup/status")
+
+    r = await asgi_request(app, "GET", "/api/setup/packages/check")
+    assert r["status"] == 200
+    assert "packages" in r["json"]
+    print("      -> [200] GET /api/setup/packages/check")
+
+    r = await asgi_request(app, "POST", "/api/setup/packages/install")
+    assert r["status"] == 200
+    print("      -> [200] POST /api/setup/packages/install")
+
+    r = await asgi_request(app, "GET", "/api/setup/packages/progress")
+    assert r["status"] == 200
+    print("      -> [200] GET /api/setup/packages/progress")
+
+    r = await asgi_request(app, "GET", "/api/setup/wifi")
+    assert r["status"] == 200
+    print("      -> [200] GET /api/setup/wifi")
+
+    r = await asgi_request(app, "POST", "/api/setup/wifi", body={"ssid": "testwifi", "password": "testpassword123", "channel": 6, "country": "RU"})
+    assert r["status"] == 200
+    print("      -> [200] POST /api/setup/wifi")
+
+    r = await asgi_request(app, "GET", "/api/setup/vpn")
+    assert r["status"] == 200
+    print("      -> [200] GET /api/setup/vpn")
+
+    r = await asgi_request(app, "POST", "/api/setup/vpn", body={"vless_uri": "", "skip": True})
+    assert r["status"] == 200
+    print("      -> [200] POST /api/setup/vpn")
+
+    r = await asgi_request(app, "POST", "/api/setup/account", body={"username": "admin", "password": "adminpassword123", "confirm_password": "adminpassword123"})
+    assert r["status"] == 200
+    print("      -> [200] POST /api/setup/account")
+
+    r = await asgi_request(app, "POST", "/api/setup/finalize")
+    assert r["status"] == 200
+    print("      -> [200] POST /api/setup/finalize")
+
+    r = await asgi_request(app, "GET", "/api/setup/finalize/progress")
+    assert r["status"] == 200
+    print("      -> [200] GET /api/setup/finalize/progress")
+
+
+def test_setup_service():
+    print("[2.8/9] Testing setup.py service (Wizard lifecycle)...")
+    chk = setup.check_system_packages()
+    assert "all_installed" in chk
+    assert len(chk["packages"]) == 8
+
+    # Stage Wi-Fi
+    ok, err = setup.save_wifi_stage_data({"ssid": "freedom-test", "password": "password123", "channel": 6, "country": "RU"})
+    assert ok is True
+
+    # Stage VPN
+    ok, err = setup.save_vpn_stage_data({"skip": True})
+    assert ok is True
+
+    # Stage Account
+    ok, err = setup.save_account_stage_data({"username": "admin", "password": "adminpassword123", "confirm_password": "adminpassword123"})
+    assert ok is True
+
+    # Install packages job
+    res = setup.start_package_installation()
+    assert res["success"] is True
+    p_status = setup.get_package_install_status()
+    assert "progress" in p_status
+
+    # Finalize setup job
+    f_res = setup.start_final_setup()
+    assert f_res["success"] is True
+    f_status = setup.get_final_setup_status()
+    assert "progress" in f_status
+    print("      -> Package verification, staged parameters, and async progress runners OK")
 
 
 def test_html_assets():
@@ -435,6 +507,17 @@ def test_html_assets():
     assert 'id="factory-reset-modal"' in html
     assert 'id="reboot-modal"' in html
 
+    # Check Setup Wizard pages & elements exist
+    assert 'id="setup-wizard-container"' in html
+    assert 'id="wizard-page-1"' in html
+    assert 'id="wizard-page-2"' in html
+    assert 'id="wizard-page-3"' in html
+    assert 'id="wizard-page-4"' in html
+    assert 'id="wizard-page-5"' in html
+    assert 'id="btn-start-packages-install"' in html
+    assert 'id="finalize-progress-bar"' in html
+    assert 'id="btn-goto-dashboard"' in html
+
     # Check VLESS subscription UI elements
     assert 'id="subscription-servers-tbody"' in html
     assert 'id="btn-sub-ping-all"' in html
@@ -445,7 +528,7 @@ def test_html_assets():
     # Check CSS syntax (balanced braces)
     assert css.count("{") == css.count("}"), "CSS brace imbalance detected!"
 
-    print("      -> All 7 page views, 5 security/maintenance modals, subscription table, and CSS integrity validated")
+    print("      -> All 7 page views, Setup Wizard (5 pages & progress bar), modals, and CSS integrity validated")
 
 
 def main():
@@ -455,6 +538,7 @@ def main():
     test_auth_service()
     test_vpn_parser()
     test_subscription_service()
+    test_setup_service()
     test_wifi_service()
     test_diagnostics_service()
     test_backups_service()

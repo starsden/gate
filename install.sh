@@ -207,48 +207,34 @@ handle_idempotency() {
 }
 
 # ------------------------------------------------------------------------------
-# 4. System Packages Installation
-# ------------------------------------------------------------------------------
-install_system_packages() {
-    log_info "Updating package lists..."
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y
-
-    log_info "Installing core gateway utilities..."
-    apt-get install -y --no-install-recommends \
-        python3 \
-        python3-pip \
-        python3-venv \
-        hostapd \
-        dnsmasq \
-        nftables \
-        curl \
-        git \
-        tar \
-        iproute2 \
-        iw \
-        pciutils \
-        procps \
-        ca-certificates
-
-    log_success "Base system packages installed."
-}
-
-# ------------------------------------------------------------------------------
-# 5. Xray-core Installation
-# ------------------------------------------------------------------------------
-install_xray() {
-    if command -v xray >/dev/null 2>&1; then
-        log_success "Xray is already installed: $(xray version 2>/dev/null | head -n1 || echo 'version ok')"
-        return 0
+# -------------------------------------------------------------
+# 4. Minimal Prerequisites for Web Controller
+# -------------------------------------------------------------
+install_minimal_packages() {
+    log_info "Checking minimal dependencies for Web Controller..."
+    local pkgs=()
+    command -v python3 >/dev/null 2>&1 || pkgs+=("python3")
+    if ! python3 -m venv --help >/dev/null 2>&1; then
+        pkgs+=("python3-venv")
     fi
+    command -v pip3 >/dev/null 2>&1 || command -v pip >/dev/null 2>&1 || pkgs+=("python3-pip")
+    command -v curl >/dev/null 2>&1 || pkgs+=("curl")
+    command -v tar >/dev/null 2>&1 || pkgs+=("tar")
 
-    log_info "Installing Xray core via official installer script..."
-    if curl -s -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | bash -s -- install; then
-        log_success "Xray installed successfully."
+    if [[ ${#pkgs[@]} -gt 0 ]]; then
+        log_info "Installing minimal Python runtime: ${pkgs[*]}..."
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y
+        apt-get install -y --no-install-recommends \
+            python3 \
+            python3-venv \
+            python3-pip \
+            curl \
+            tar \
+            ca-certificates
+        log_success "Minimal prerequisites installed."
     else
-        log_warn "Automatic Xray script download encountered an issue. Creating /etc/xray placeholder."
-        mkdir -p /etc/xray
+        log_success "Minimal Python 3 environment is already present."
     fi
 }
 
@@ -365,7 +351,8 @@ deploy_app() {
 }
 
 # ------------------------------------------------------------------------------
-# 8. Configure Networking & Services
+# ------------------------------------------------------------------------------
+# 8. Configure Networking & Services (Optional / Repair only)
 # ------------------------------------------------------------------------------
 configure_networking() {
     log_info "Enabling IPv4 forwarding..."
@@ -410,39 +397,56 @@ EOF
 }
 
 # ------------------------------------------------------------------------------
-# 9. Install & Start Systemd Units
+# 9. Start Web Controller Service
 # ------------------------------------------------------------------------------
-setup_systemd() {
-    log_info "Installing systemd services..."
+setup_web_service() {
+    log_info "Installing Web Controller systemd service..."
 
     cp "${SOURCE_DIR}/systemd/vpn-gateway.service" "${SYSTEMD_DIR}/"
-    cp "${SOURCE_DIR}/systemd/vpn-gateway-routes.service" "${SYSTEMD_DIR}/"
 
     systemctl daemon-reload
-    systemctl enable vpn-gateway.service vpn-gateway-routes.service
-    systemctl restart vpn-gateway.service vpn-gateway-routes.service
+    systemctl enable vpn-gateway.service
+    systemctl restart vpn-gateway.service
 
-    log_success "vpn-gateway.service and vpn-gateway-routes.service are enabled and running."
+    log_success "vpn-gateway.service is enabled and running."
 }
 
 # ------------------------------------------------------------------------------
-# 9. Success Banner
+# 10. Success Banner
 # ------------------------------------------------------------------------------
 show_completion_banner() {
+    local HOST_IP=""
+    if command -v ip >/dev/null 2>&1; then
+        HOST_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -n1 || true)"
+        if [[ -z "${HOST_IP}" ]]; then
+            HOST_IP="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1 || true)"
+        fi
+    fi
+    HOST_IP="${HOST_IP:-10.42.0.1}"
+
     echo ""
     echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${GREEN}${BOLD}║                 VPN GATEWAY INSTALLED                        ║${RESET}"
+    echo -e "${GREEN}${BOLD}║              VPN GATEWAY WEB PANEL LAUNCHED                  ║${RESET}"
     echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}"
     echo ""
     echo -e "Web interface available at:"
-    echo -e "  ${BOLD}${BLUE}http://10.42.0.1${RESET}  (or host Ethernet IP: ${WAN_IFACE})"
+    echo -e "  ${BOLD}${BLUE}http://${HOST_IP}${RESET}  (or http://10.42.0.1 / http://localhost)"
+    if [[ -n "${WAN_IFACE:-}" ]]; then
+        echo -e "  WAN Interface:    ${BOLD}${WAN_IFACE}${RESET}"
+    fi
+    if [[ -n "${WIFI_IFACE:-}" ]]; then
+        echo -e "  Wi-Fi Interface:  ${BOLD}${WIFI_IFACE}${RESET}"
+    fi
     echo ""
-    echo -e "Wi-Fi Access Point:"
-    echo -e "  SSID:     ${BOLD}freedom${RESET}"
-    echo -e "  Channel:  ${BOLD}6 (2.4 GHz)${RESET}"
-    echo -e "  Security: ${BOLD}WPA2-PSK${RESET}"
+    echo -e "Next steps (Web-Based Onboarding):"
+    echo -e "  1. Open ${BOLD}http://${HOST_IP}${RESET} in your browser."
+    echo -e "  2. Confirm checking & installation of missing packages (hostapd, dnsmasq, nftables, xray)."
+    echo -e "  3. Configure your Wi-Fi Access Point."
+    echo -e "  4. Configure your VLESS / REALITY VPN link."
+    echo -e "  5. Set your administrator account password."
+    echo -e "  6. System will automatically apply settings with a progress bar and open the dashboard."
     echo ""
-    echo -e "Systemd Service Status:"
+    echo -e "Web service status:"
     echo -e "  systemctl status vpn-gateway.service"
     echo ""
 }
@@ -455,7 +459,7 @@ main() {
         echo "Usage: sudo bash install.sh [OPTION]"
         echo ""
         echo "Options:"
-        echo "  (none)            Interactive install / detect existing setup"
+        echo "  (none)            Launch web panel and begin web-based setup wizard"
         echo "  --update          Non-interactive update (refreshes code & static assets, preserves configs)"
         echo "  --repair          Restore network rules, routing tables, and restart daemons"
         echo "  --reinstall       Fresh install with automatic backup of /etc/vpn-gateway"
@@ -475,37 +479,37 @@ main() {
     case "${ACTION}" in
         reset-password)
             log_info "Resetting administrator credentials..."
-            rm -f "${CONFIG_DIR}/auth.json"
+            rm -f "${CONFIG_DIR}/auth.json" "${CONFIG_DIR}/setup_state.json"
             systemctl restart vpn-gateway.service 2>/dev/null || true
-            log_success "Admin password reset successfully! Open http://10.42.0.1 to set a new password."
+            log_success "Admin password reset successfully! Open the Web UI to set a new password."
             exit 0
             ;;
         factory-reset)
             log_warn "Performing full factory reset..."
-            rm -f "${CONFIG_DIR}/auth.json" "${CONFIG_DIR}/vpn.json" "${CONFIG_DIR}/wifi_state.json"
+            rm -f "${CONFIG_DIR}/auth.json" "${CONFIG_DIR}/vpn.json" "${CONFIG_DIR}/wifi_state.json" "${CONFIG_DIR}/setup_state.json"
             ensure_source_files
             configure_networking
-            setup_systemd
+            setup_web_service
             systemctl restart hostapd.service dnsmasq.service 2>/dev/null || true
-            log_success "Factory reset completed! Wi-Fi SSID is 'freedom', password setup ready in web UI."
+            log_success "Factory reset completed! Open the Web UI to begin setup."
             exit 0
             ;;
         update)
             ensure_source_files
             deploy_app
-            setup_systemd
+            setup_web_service
             show_completion_banner
             ;;
         repair)
             ensure_source_files
             configure_networking
-            setup_systemd
+            setup_web_service
             "${INSTALL_DIR}/venv/bin/python" -m backend.services.network || true
             log_success "Repair complete. Network routing and systemd services restored."
             ;;
         uninstall)
             log_warn "Stopping and removing systemd units..."
-            systemctl stop vpn-gateway.service vpn-gateway-routes.service 2>/dev/null || true
+            systemctl stop vpn-gateway.service vpn-gateway-routes.service hostapd.service dnsmasq.service 2>/dev/null || true
             systemctl disable vpn-gateway.service vpn-gateway-routes.service 2>/dev/null || true
             rm -f "${SYSTEMD_DIR}/vpn-gateway.service" "${SYSTEMD_DIR}/vpn-gateway-routes.service"
             systemctl daemon-reload
@@ -514,12 +518,10 @@ main() {
             exit 0
             ;;
         install|reinstall|*)
-            install_system_packages
+            install_minimal_packages
             ensure_source_files
-            install_xray
             deploy_app
-            configure_networking
-            setup_systemd
+            setup_web_service
             show_completion_banner
             ;;
     esac

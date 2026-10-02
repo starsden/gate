@@ -544,7 +544,7 @@
                 </div>
                 <span class="status-badge badge-success" id="vpn-page-status-badge">● Connected</span>
               </div>
-              <div class="card-body">
+              <div class="card-body vpn-stats-grid-body">
                 <div class="stat-row">
                   <span class="stat-label">Protocol</span>
                   <span class="stat-val font-bold" id="vpn-info-proto">VLESS</span>
@@ -558,14 +558,6 @@
                   <span class="stat-val font-mono" id="vpn-info-transport">TCP</span>
                 </div>
                 <div class="stat-row">
-                  <span class="stat-label">Server</span>
-                  <span class="stat-val font-mono font-bold" id="vpn-info-server">185.196.220.14:443</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">SNI (Server Name)</span>
-                  <span class="stat-val font-mono" id="vpn-info-sni">cloudflare.com</span>
-                </div>
-                <div class="stat-row">
                   <span class="stat-label">Flow</span>
                   <span class="stat-val font-mono" id="vpn-info-flow">xtls-rprx-vision</span>
                 </div>
@@ -574,6 +566,14 @@
                   <span class="stat-val font-mono" id="vpn-info-fp">chrome</span>
                 </div>
                 <div class="stat-row">
+                  <span class="stat-label">SNI (Server Name)</span>
+                  <span class="stat-val font-mono" id="vpn-info-sni">cloudflare.com</span>
+                </div>
+                <div class="stat-row full-width">
+                  <span class="stat-label">Server</span>
+                  <span class="stat-val font-mono font-bold" id="vpn-info-server">185.196.220.14:443</span>
+                </div>
+                <div class="stat-row full-width">
                   <span class="stat-label">UUID</span>
                   <span class="stat-val font-mono text-muted" id="vpn-info-uuid">••••••••-••••-••••-••••-••••••••657c</span>
                 </div>
@@ -582,12 +582,12 @@
                   <span class="stat-val font-mono" id="vpn-info-uptime">2h 17m</span>
                 </div>
                 <div class="stat-row">
-                  <span class="stat-label">Traffic</span>
-                  <span class="stat-val font-mono" id="vpn-info-traffic">↓ 4.2 GB &nbsp; ↑ 832 MB</span>
-                </div>
-                <div class="stat-row">
                   <span class="stat-label">Latency</span>
                   <span class="stat-val font-mono" id="vpn-info-latency">42 ms</span>
+                </div>
+                <div class="stat-row full-width">
+                  <span class="stat-label">Traffic</span>
+                  <span class="stat-val font-mono" id="vpn-info-traffic">↓ 4.2 GB &nbsp; ↑ 832 MB</span>
                 </div>
               </div>
               <div class="card-footer vpn-actions-footer">
@@ -1340,7 +1340,7 @@
                 </div>
               </div>
               <div class="card-body">
-                <p class="text-secondary" style="font-size: 13px; line-height: 1.5; margin-bottom: 14px;">
+                <p class="card-desc mb-3">
                   Archives active VPN profiles, Wi-Fi parameters, firewall ruleset, DHCP leases, and admin hash into an encrypted local archive for instant rollback.
                 </p>
                 <div class="form-group">
@@ -1431,6 +1431,350 @@
 
       </div>
     </main>
+  </div>
+
+  <!-- Setup Wizard Modal / Fullscreen Multi-Step Flow -->
+  <div id="setup-wizard-container" class="setup-wizard-container hidden">
+    <div class="wizard-card">
+
+      <!-- Wizard Header & Steps Stepper -->
+      <div class="wizard-header">
+        <div class="wizard-brand">
+          <div class="brand-icon-wrap">
+            <span class="beacon-pulse"></span>
+          </div>
+          <div class="wizard-title-wrap">
+            <h1 class="wizard-title">VPN GATEWAY</h1>
+            <span class="wizard-subtitle">Мастер первичной настройки шлюза</span>
+          </div>
+        </div>
+
+        <!-- Multi-page Stepper Tabs -->
+        <div class="wizard-stepper">
+          <div class="wizard-step-item active" data-step="1" id="nav-step-1">
+            <span class="step-num">1</span>
+            <span class="step-label">Пакеты</span>
+          </div>
+          <div class="step-line" id="line-step-1"></div>
+          <div class="wizard-step-item" data-step="2" id="nav-step-2">
+            <span class="step-num">2</span>
+            <span class="step-label">Wi-Fi</span>
+          </div>
+          <div class="step-line" id="line-step-2"></div>
+          <div class="wizard-step-item" data-step="3" id="nav-step-3">
+            <span class="step-num">3</span>
+            <span class="step-label">VPN</span>
+          </div>
+          <div class="step-line" id="line-step-3"></div>
+          <div class="wizard-step-item" data-step="4" id="nav-step-4">
+            <span class="step-num">4</span>
+            <span class="step-label">Аккаунт</span>
+          </div>
+          <div class="step-line" id="line-step-4"></div>
+          <div class="wizard-step-item" data-step="5" id="nav-step-5">
+            <span class="step-num">5</span>
+            <span class="step-label">Завершение</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE 1: Packages Verification & Installation -->
+      <div class="wizard-page active" id="wizard-page-1">
+        <div class="wizard-page-header">
+          <span class="wizard-page-badge">Шаг 1 из 5</span>
+          <h2 class="wizard-page-title">Проверка и установка необходимых пакетов</h2>
+          <p class="wizard-page-desc">Для работы точки доступа, маршрутизации и VPN-туннеля требуются системные компоненты ядра Linux. Подтвердите проверку и установку недостающих пакетов.</p>
+        </div>
+
+        <div class="wizard-card-inner">
+          <div class="packages-summary-bar" id="packages-summary-bar">
+            <span id="packages-summary-text">Проверка наличия компонентов...</span>
+            <button type="button" id="btn-refresh-packages" class="btn btn-secondary btn-sm">Повторить проверку</button>
+          </div>
+
+          <div class="packages-grid" id="packages-list-grid">
+            <!-- Dynamically populated package cards -->
+          </div>
+
+          <!-- Package installation action box -->
+          <div class="packages-action-box" id="packages-action-box">
+            <p class="wizard-notice-text">Нажмите кнопку ниже для подтверждения и автоматической установки недостающих компонентов (apt-get & Xray-core).</p>
+            <button type="button" id="btn-start-packages-install" class="btn btn-primary btn-large" style="width: 100%;">
+              🚀 Подтвердить и установить пакеты
+            </button>
+          </div>
+
+          <!-- Installation progress & live log console -->
+          <div class="install-progress-box hidden" id="packages-install-progress-box">
+            <div class="progress-info-row">
+              <span class="progress-task-label" id="packages-progress-task">Установка пакетов...</span>
+              <span class="progress-pct-label" id="packages-progress-pct">0%</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar" id="packages-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div class="wizard-terminal-log" id="packages-terminal-log">Ожидание запуска...</div>
+          </div>
+        </div>
+
+        <div class="wizard-footer">
+          <div></div>
+          <button type="button" id="btn-packages-next" class="btn btn-primary" disabled>
+            Далее: Настройка Wi-Fi →
+          </button>
+        </div>
+      </div>
+
+      <!-- PAGE 2: Wi-Fi Setup -->
+      <div class="wizard-page" id="wizard-page-2">
+        <div class="wizard-page-header">
+          <span class="wizard-page-badge">Шаг 2 из 5</span>
+          <h2 class="wizard-page-title">Первичная настройка Wi-Fi сети</h2>
+          <p class="wizard-page-desc">Настройте параметры беспроводной точки доступа (SSID и пароль), к которой будут подключаться ваши устройства.</p>
+        </div>
+
+        <div class="wizard-card-inner">
+          <div class="hw-badge-box" id="wizard-wifi-hw-badge">
+            <span class="hw-icon">📶</span>
+            <div class="hw-text">
+              <div class="hw-title" id="wizard-wifi-hw-title">Определение Wi-Fi адаптера...</div>
+              <div class="hw-sub" id="wizard-wifi-hw-sub">Интерфейс: wlp4s0 (ath9k)</div>
+            </div>
+          </div>
+
+          <form id="wizard-wifi-form" class="wizard-form">
+            <div class="form-group">
+              <label class="form-label" for="wizard-wifi-ssid">Имя Wi-Fi сети (SSID)</label>
+              <input type="text" id="wizard-wifi-ssid" class="form-control" value="freedom" maxlength="32" required placeholder="freedom" />
+              <span class="form-hint">Имя сети, видимое на телефонах и компьютерах (1-32 символов).</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="wizard-wifi-pass">Пароль Wi-Fi сети (WPA2-PSK)</label>
+              <div class="input-password-wrap">
+                <input type="password" id="wizard-wifi-pass" class="form-control" value="freedom123" minlength="8" maxlength="63" required placeholder="Минимум 8 символов" />
+                <button type="button" class="btn-toggle-eye" id="btn-toggle-wifi-pass" aria-label="Показать/скрыть пароль">👁</button>
+              </div>
+              <span class="form-hint">Надежный пароль для подключения клиентов (от 8 до 63 символов).</span>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label" for="wizard-wifi-channel">Канал (2.4 GHz)</label>
+                <select id="wizard-wifi-channel" class="form-control">
+                  <option value="1">Канал 1 (2412 MHz)</option>
+                  <option value="6" selected>Канал 6 (2437 MHz) — Рекомендуется</option>
+                  <option value="11">Канал 11 (2462 MHz)</option>
+                  <option value="2">Канал 2</option>
+                  <option value="3">Канал 3</option>
+                  <option value="4">Канал 4</option>
+                  <option value="5">Канал 5</option>
+                  <option value="7">Канал 7</option>
+                  <option value="8">Канал 8</option>
+                  <option value="9">Канал 9</option>
+                  <option value="10">Канал 10</option>
+                  <option value="12">Канал 12</option>
+                  <option value="13">Канал 13</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="wizard-wifi-country">Региональный код (Country Code)</label>
+                <select id="wizard-wifi-country" class="form-control">
+                  <option value="RU" selected>RU - Россия</option>
+                  <option value="US">US - США</option>
+                  <option value="DE">DE - Германия</option>
+                  <option value="NL">NL - Нидерланды</option>
+                  <option value="GB">GB - Великобритания</option>
+                </select>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="wizard-footer">
+          <button type="button" id="btn-wifi-prev" class="btn btn-secondary">
+            ← Назад
+          </button>
+          <button type="button" id="btn-wifi-next" class="btn btn-primary">
+            Далее: Настройка VPN →
+          </button>
+        </div>
+      </div>
+
+      <!-- PAGE 3: VPN Setup -->
+      <div class="wizard-page" id="wizard-page-3">
+        <div class="wizard-page-header">
+          <span class="wizard-page-badge">Шаг 3 из 5</span>
+          <h2 class="wizard-page-title">Первичная настройка VPN (VLESS / REALITY)</h2>
+          <p class="wizard-page-desc">Подключите ваш VPN-сервер для прозрачной переадресации трафика подключенных устройств через защищенный туннель.</p>
+        </div>
+
+        <div class="wizard-card-inner">
+          <div class="form-group">
+            <label class="form-label" for="wizard-vpn-input">Конфигурационная ссылка VLESS или ссылка подписки</label>
+            <textarea id="wizard-vpn-input" class="form-control font-mono" rows="3" placeholder="vless://••••••••@server.example.com:443?security=reality&pbk=...#MyNode или https://sub.provider.com/..."></textarea>
+            <span class="form-hint">Поддерживаются стандартные ссылки vless:// (REALITY/TLS) и ссылки подписок.</span>
+          </div>
+
+          <div id="wizard-vpn-info-card" class="vpn-info-preview hidden">
+            <div class="preview-row">
+              <span class="preview-label">Сервер:</span>
+              <span class="preview-val font-mono" id="wizard-vpn-preview-server">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">Порт / Протокол:</span>
+              <span class="preview-val font-mono" id="wizard-vpn-preview-proto">VLESS</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">Безопасность:</span>
+              <span class="preview-val" id="wizard-vpn-preview-sec">REALITY</span>
+            </div>
+          </div>
+
+          <div class="skip-vpn-box">
+            <label class="checkbox-label" for="wizard-vpn-skip-check">
+              <input type="checkbox" id="wizard-vpn-skip-check" />
+              <span>Настроить VPN позже (пропустить этот шаг, весь трафик пойдет напрямую через Ethernet WAN)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="wizard-footer">
+          <button type="button" id="btn-vpn-prev" class="btn btn-secondary">
+            ← Назад
+          </button>
+          <button type="button" id="btn-vpn-next" class="btn btn-primary">
+            Далее: Аккаунт администратора →
+          </button>
+        </div>
+      </div>
+
+      <!-- PAGE 4: Dashboard Account Setup -->
+      <div class="wizard-page" id="wizard-page-4">
+        <div class="wizard-page-header">
+          <span class="wizard-page-badge">Шаг 4 из 5</span>
+          <h2 class="wizard-page-title">Настройка аккаунта дашборда</h2>
+          <p class="wizard-page-desc">Задайте пароль администратора для защиты веб-панели управления и изменения настроек роутера.</p>
+        </div>
+
+        <div class="wizard-card-inner">
+          <form id="wizard-account-form" class="wizard-form" autocomplete="off">
+            <div class="form-group">
+              <label class="form-label" for="wizard-account-user">Имя пользователя</label>
+              <input type="text" id="wizard-account-user" class="form-control font-mono" value="admin" readonly />
+              <span class="form-hint">Основная учетная запись администратора шлюза.</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="wizard-account-pass">Пароль администратора</label>
+              <div class="input-password-wrap">
+                <input type="password" id="wizard-account-pass" class="form-control" placeholder="Минимум 6 символов" minlength="6" required />
+                <button type="button" class="btn-toggle-eye" id="btn-toggle-admin-pass" aria-label="Показать/скрыть пароль">👁</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="wizard-account-confirm">Подтверждение пароля</label>
+              <input type="password" id="wizard-account-confirm" class="form-control" placeholder="Повторите введенный пароль" minlength="6" required />
+            </div>
+          </form>
+        </div>
+
+        <div class="wizard-footer">
+          <button type="button" id="btn-account-prev" class="btn btn-secondary">
+            ← Назад
+          </button>
+          <button type="button" id="btn-account-next" class="btn btn-primary">
+            Далее: Применение настроек →
+          </button>
+        </div>
+      </div>
+
+      <!-- PAGE 5: Final System Configuration with Progress Bar -->
+      <div class="wizard-page" id="wizard-page-5">
+        <div class="wizard-page-header">
+          <span class="wizard-page-badge">Шаг 5 из 5</span>
+          <h2 class="wizard-page-title">Окончательная настройка системы</h2>
+          <p class="wizard-page-desc" id="finalize-desc">Применяем параметры сетевых интерфейсов, генерируем конфигурации hostapd/dnsmasq/nftables и активируем службы...</p>
+        </div>
+
+        <div class="wizard-card-inner">
+
+          <!-- Large Animated Progress Bar -->
+          <div class="finalize-progress-card">
+            <div class="progress-info-row">
+              <span class="progress-task-label font-bold" id="finalize-current-task">Инициализация параметров...</span>
+              <span class="progress-pct-label font-mono font-bold" id="finalize-progress-pct">0%</span>
+            </div>
+            <div class="progress-bar-wrap finalize-bar-wrap">
+              <div class="progress-bar finalize-bar" id="finalize-progress-bar" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Step-by-Step Task Checklist -->
+          <div class="finalize-tasks-list" id="finalize-tasks-list">
+            <div class="task-item" id="task-net">
+              <span class="task-status-icon" id="task-icon-net">⏳</span>
+              <span class="task-name">1. Определение сетевых интерфейсов и параметров ядра (IPv4 forward)</span>
+            </div>
+            <div class="task-item" id="task-wifi">
+              <span class="task-status-icon" id="task-icon-wifi">⏳</span>
+              <span class="task-name">2. Конфигурация точки доступа Wi-Fi (hostapd.conf)</span>
+            </div>
+            <div class="task-item" id="task-dhcp">
+              <span class="task-status-icon" id="task-icon-dhcp">⏳</span>
+              <span class="task-name">3. Конфигурация DHCP и DNS серверов (dnsmasq.conf)</span>
+            </div>
+            <div class="task-item" id="task-firewall">
+              <span class="task-status-icon" id="task-icon-firewall">⏳</span>
+              <span class="task-name">4. Применение правил межсетевого экрана и NAT (nftables.conf)</span>
+            </div>
+            <div class="task-item" id="task-routing">
+              <span class="task-status-icon" id="task-icon-routing">⏳</span>
+              <span class="task-name">5. Настройка маршрутизации политики Table 100</span>
+            </div>
+            <div class="task-item" id="task-vpn">
+              <span class="task-status-icon" id="task-icon-vpn">⏳</span>
+              <span class="task-name">6. Инициализация VPN-туннеля Xray Core</span>
+            </div>
+            <div class="task-item" id="task-services">
+              <span class="task-status-icon" id="task-icon-services">⏳</span>
+              <span class="task-name">7. Запуск системных демонов (hostapd, dnsmasq, nftables, xray)</span>
+            </div>
+            <div class="task-item" id="task-account">
+              <span class="task-status-icon" id="task-icon-account">⏳</span>
+              <span class="task-name">8. Сохранение аккаунта администратора и финализация</span>
+            </div>
+          </div>
+
+          <!-- Real-time Console Log -->
+          <div class="wizard-terminal-log" id="finalize-terminal-log">
+            Ожидание запуска окончательной настройки...
+          </div>
+
+          <!-- Success Card shown on 100% -->
+          <div class="finalize-success-card hidden" id="finalize-success-card">
+            <div class="success-icon-badge">🎉</div>
+            <h3 class="success-title">Настройка успешно завершена!</h3>
+            <p class="success-desc">Все системные службы запущены, Wi-Fi сеть активна. Сейчас откроется дашборд со страницей.</p>
+            <div class="success-actions">
+              <button type="button" id="btn-goto-dashboard" class="btn btn-primary btn-large">
+                Перейти в панель управления →
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="wizard-footer" id="finalize-footer">
+          <div></div>
+          <button type="button" id="btn-start-finalize" class="btn btn-primary btn-large">
+            ⚙️ Запустить окончательную настройку системы
+          </button>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <!-- Wi-Fi Apply Confirmation Modal -->

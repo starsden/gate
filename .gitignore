@@ -9,5 +9,7 @@ __pycache__/
 *.tmp
 configs/backups/
 configs/wifi_state.json
+configs/vpn_state.json
 configs/auth.json
 configs/subscription.json
+configs/setup_state.json
