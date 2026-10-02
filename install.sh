@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")
 SOURCE_DIR="${SCRIPT_DIR}"
 
 # GitHub Settings for One-Line Remote Installer (curl -fsSL ... | sudo bash)
-GITHUB_REPO="${GITHUB_REPO:-starsden/vpn-gateway}"
+GITHUB_REPO="${GITHUB_REPO:-starsden/gate}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 
 # ------------------------------------------------------------------------------
@@ -265,57 +265,72 @@ ensure_source_files() {
     local downloaded=0
 
     # Candidate repos to probe
+    local candidate_repos=("starsden/gate" "starsden/gates" "starsden/vpn-gateway")
     local repos_to_try=("${GITHUB_REPO}")
-    if [[ "${GITHUB_REPO}" != "starsden/vpn-gateway" ]]; then
-        repos_to_try+=("starsden/vpn-gateway")
+    for cand in "${candidate_repos[@]}"; do
+        if [[ "${cand}" != "${GITHUB_REPO}" ]]; then
+            repos_to_try+=("${cand}")
+        fi
+    done
+
+    local candidate_branches=("${GITHUB_BRANCH}")
+    if [[ "${GITHUB_BRANCH}" != "main" ]]; then
+        candidate_branches+=("main")
     fi
-    if [[ "${GITHUB_REPO}" != "starsden/gates" ]]; then
-        repos_to_try+=("starsden/gates")
+    if [[ "${GITHUB_BRANCH}" != "master" ]]; then
+        candidate_branches+=("master")
     fi
 
     for repo in "${repos_to_try[@]}"; do
-        log_info "Checking repository: ${repo} (branch: ${GITHUB_BRANCH})..."
+        for branch in "${candidate_branches[@]}"; do
+            log_info "Checking repository: ${repo} (branch: ${branch})..."
 
-        # Attempt A: git clone
-        if command -v git >/dev/null 2>&1; then
-            if git clone --depth 1 -b "${GITHUB_BRANCH}" "https://github.com/${repo}.git" "${tmp_dir}" 2>/dev/null; then
-                if [[ -f "${tmp_dir}/backend/app.py" ]]; then
-                    downloaded=1
-                    GITHUB_REPO="${repo}"
-                    break
+            # Attempt A: git clone
+            if command -v git >/dev/null 2>&1; then
+                rm -rf "${tmp_dir}"
+                if git clone --depth 1 -b "${branch}" "https://github.com/${repo}.git" "${tmp_dir}" 2>/dev/null; then
+                    if [[ -f "${tmp_dir}/backend/app.py" ]]; then
+                        downloaded=1
+                        GITHUB_REPO="${repo}"
+                        GITHUB_BRANCH="${branch}"
+                        break 2
+                    fi
                 fi
             fi
-        fi
 
-        # Attempt B: GitHub tarball via curl / wget
-        local tarball_url="https://github.com/${repo}/archive/refs/heads/${GITHUB_BRANCH}.tar.gz"
-        rm -rf "${tmp_dir}" && mkdir -p "${tmp_dir}"
-        if command -v curl >/dev/null 2>&1; then
-            if curl -fsSL "${tarball_url}" 2>/dev/null | tar -xz -C "${tmp_dir}" --strip-components=1 2>/dev/null; then
-                if [[ -f "${tmp_dir}/backend/app.py" ]]; then
-                    downloaded=1
-                    GITHUB_REPO="${repo}"
-                    break
+            # Attempt B: GitHub tarball via curl / wget
+            local tarball_url="https://github.com/${repo}/archive/refs/heads/${branch}.tar.gz"
+            rm -rf "${tmp_dir}" && mkdir -p "${tmp_dir}"
+            if command -v curl >/dev/null 2>&1; then
+                if curl -fsSL "${tarball_url}" 2>/dev/null | tar -xz -C "${tmp_dir}" --strip-components=1 2>/dev/null; then
+                    if [[ -f "${tmp_dir}/backend/app.py" ]]; then
+                        downloaded=1
+                        GITHUB_REPO="${repo}"
+                        GITHUB_BRANCH="${branch}"
+                        break 2
+                    fi
+                fi
+            elif command -v wget >/dev/null 2>&1; then
+                if wget -qO- "${tarball_url}" 2>/dev/null | tar -xz -C "${tmp_dir}" --strip-components=1 2>/dev/null; then
+                    if [[ -f "${tmp_dir}/backend/app.py" ]]; then
+                        downloaded=1
+                        GITHUB_REPO="${repo}"
+                        GITHUB_BRANCH="${branch}"
+                        break 2
+                    fi
                 fi
             fi
-        elif command -v wget >/dev/null 2>&1; then
-            if wget -qO- "${tarball_url}" 2>/dev/null | tar -xz -C "${tmp_dir}" --strip-components=1 2>/dev/null; then
-                if [[ -f "${tmp_dir}/backend/app.py" ]]; then
-                    downloaded=1
-                    GITHUB_REPO="${repo}"
-                    break
-                fi
-            fi
-        fi
+        done
     done
 
     if [[ "${downloaded}" -eq 1 && -f "${tmp_dir}/backend/app.py" ]]; then
         SOURCE_DIR="${tmp_dir}"
-        log_success "Source tree downloaded successfully from https://github.com/${GITHUB_REPO}."
+        log_success "Source tree downloaded successfully from https://github.com/${GITHUB_REPO} (branch: ${GITHUB_BRANCH})."
     else
         log_error "Could not download repository source from GitHub."
-        log_error "Checked repositories: ${repos_to_try[*]} on branch '${GITHUB_BRANCH}'."
-        log_error "Please check internet connectivity or specify custom repo: GITHUB_REPO=username/repo bash $0"
+        log_error "Checked repositories: ${repos_to_try[*]} on branch(es): ${candidate_branches[*]}."
+        log_error "To install manually or specify repo, run:"
+        log_error "  git clone https://github.com/starsden/gate.git /opt/vpn-gateway-src && cd /opt/vpn-gateway-src && sudo bash install.sh"
         exit 1
     fi
 }
