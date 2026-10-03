@@ -584,7 +584,7 @@ country_code={country}
 ieee80211d=1
 ieee80211n=1
 wmm_enabled=1
-ht_capab=[HT20][SHORT-GI-20]
+ht_capab=[HT20]
 macaddr_acl=0
 auth_algs=1
 ignore_broadcast_ssid=0
@@ -604,7 +604,7 @@ rsn_pairwise=CCMP
                 # Debian requires DAEMON_CONF in /etc/default/hostapd
                 default_hostapd = Path("/etc/default/hostapd")
                 default_hostapd.parent.mkdir(parents=True, exist_ok=True)
-                default_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\n')
+                default_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\nDAEMON_OPTS=""\n')
 
                 subprocess.run(["systemctl", "unmask", "hostapd"], capture_output=True, timeout=5)
                 subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=5)
@@ -666,12 +666,12 @@ flush ruleset
 table inet filter {{
     chain input {{
         type filter hook input priority filter; policy accept;
-        iif "lo" accept
+        iifname "lo" accept
         ct state established,related accept
         
         # Allow DHCP, DNS, and Web UI on Wi-Fi LAN
-        iif "{wifi_iface}" udp dport {{ 53, 67 }} accept
-        iif "{wifi_iface}" tcp dport {{ 53, 80 }} accept
+        iifname "{wifi_iface}" udp dport {{ 53, 67 }} accept
+        iifname "{wifi_iface}" tcp dport {{ 53, 80 }} accept
     }}
 
     chain forward {{
@@ -679,10 +679,10 @@ table inet filter {{
         ct state established,related accept
         
         # Forward Wi-Fi client traffic to xray0 TUN
-        iif "{wifi_iface}" oif "xray0" accept
+        iifname "{wifi_iface}" oifname "xray0" accept
         
         # Fallback forward to WAN Ethernet
-        iif "{wifi_iface}" oif "{wan_iface}" accept
+        iifname "{wifi_iface}" oifname "{wan_iface}" accept
     }}
 
     chain output {{
@@ -695,15 +695,25 @@ table ip nat {{
         type nat hook postrouting priority srcnat; policy accept;
         
         # Masquerade traffic going to Xray TUN
-        oif "xray0" masquerade
+        oifname "xray0" masquerade
         
         # Masquerade traffic going direct to WAN
-        oif "{wan_iface}" masquerade
+        oifname "{wan_iface}" masquerade
     }}
 }}
 """
         if _is_linux():
             try:
+                # Ensure NAT and masquerade modules are loaded
+                for mod in ["nf_tables", "nf_nat", "nft_nat", "nft_masq"]:
+                    subprocess.run(["modprobe", mod], capture_output=True, timeout=2)
+                try:
+                    mod_load_dir = Path("/etc/modules-load.d")
+                    mod_load_dir.mkdir(parents=True, exist_ok=True)
+                    (mod_load_dir / "vpn-gateway.conf").write_text("nft_nat\nnft_masq\nnf_nat\n")
+                except Exception:
+                    pass
+
                 nft_file = Path("/etc/nftables.conf")
                 with open(nft_file, "w") as f:
                     f.write(nft_content)

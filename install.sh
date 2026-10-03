@@ -414,7 +414,13 @@ EOF
     mkdir -p /etc/hostapd
     sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
         "${SOURCE_DIR}/configs/hostapd.conf" > /etc/hostapd/hostapd.conf
-    echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
+    # Remove unsupported [SHORT-GI-20] if present in target hostapd.conf
+    sed -i 's/\[SHORT-GI-20\]//g' /etc/hostapd/hostapd.conf 2>/dev/null || true
+
+    cat <<EOF > /etc/default/hostapd
+DAEMON_CONF="/etc/hostapd/hostapd.conf"
+DAEMON_OPTS=""
+EOF
     systemctl unmask hostapd 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
 
@@ -422,6 +428,18 @@ EOF
     mkdir -p /etc/dnsmasq.d
     sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
         "${SOURCE_DIR}/configs/dnsmasq.conf" > /etc/dnsmasq.d/vpn-gateway.conf
+
+    # Kernel modules for NAT & masquerade
+    modprobe nf_tables 2>/dev/null || true
+    modprobe nf_nat 2>/dev/null || true
+    modprobe nft_nat 2>/dev/null || true
+    modprobe nft_masq 2>/dev/null || true
+    mkdir -p /etc/modules-load.d 2>/dev/null || true
+    cat <<EOF > /etc/modules-load.d/vpn-gateway.conf
+nft_nat
+nft_masq
+nf_nat
+EOF
 
     # Nftables config & load
     if [[ -f "${SOURCE_DIR}/configs/nftables.conf" ]]; then
@@ -541,6 +559,7 @@ main() {
         update)
             ensure_source_files
             deploy_app
+            configure_networking
             setup_web_service
             show_completion_banner
             ;;

@@ -388,9 +388,17 @@ def execute_auto_repair() -> Dict[str, Any]:
             # Fix hostapd configuration in /etc/default/hostapd (Debian requirement)
             def_hostapd = Path("/etc/default/hostapd")
             def_hostapd.parent.mkdir(parents=True, exist_ok=True)
-            def_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\n')
+            def_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\nDAEMON_OPTS=""\n')
             subprocess.run(["systemctl", "unmask", "hostapd"], capture_output=True, timeout=2)
             subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=2)
+
+            # Remove unsupported [SHORT-GI-20] from hostapd.conf if present
+            hostapd_conf = Path("/etc/hostapd/hostapd.conf")
+            if hostapd_conf.exists():
+                h_text = hostapd_conf.read_text()
+                if "SHORT-GI-20" in h_text:
+                    hostapd_conf.write_text(h_text.replace("[SHORT-GI-20]", ""))
+                    actions_taken.append("Removed unsupported [SHORT-GI-20] capability from hostapd.conf")
 
             # Assign static IP and bring interface up
             subprocess.run(["ip", "link", "set", lan_iface, "up"], capture_output=True, timeout=3)
@@ -406,7 +414,17 @@ def execute_auto_repair() -> Dict[str, Any]:
     else:
         actions_taken.append(f"Sync routes notice: {sync_res.get('error') or sync_res.get('message')}")
 
-    # 4. Re-apply nftables ruleset
+    # 4. Load required kernel modules and re-apply nftables ruleset
+    if _is_linux():
+        for mod in ["nf_tables", "nf_nat", "nft_nat", "nft_masq"]:
+            subprocess.run(["modprobe", mod], capture_output=True, timeout=2)
+        try:
+            mod_load_dir = Path("/etc/modules-load.d")
+            mod_load_dir.mkdir(parents=True, exist_ok=True)
+            (mod_load_dir / "vpn-gateway.conf").write_text("nft_nat\nnft_masq\nnf_nat\n")
+        except Exception:
+            pass
+
     fw_res = apply_firewall_ruleset(wan_iface=wan_iface, lan_iface=lan_iface)
     if fw_res.get("success"):
         actions_taken.append("Reloaded nftables ruleset with NAT masquerade")

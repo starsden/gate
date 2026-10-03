@@ -83,12 +83,12 @@ flush ruleset
 table inet filter {{
     chain input {{
         type filter hook input priority filter; policy accept;
-        iif "lo" accept
+        iifname "lo" accept
         ct state established,related accept
         
         # Allow DHCP, DNS, and Web UI on Wi-Fi LAN
-        iif "{lan_iface}" udp dport {{ 53, 67 }} accept
-        iif "{lan_iface}" tcp dport {{ 53, 80 }} accept
+        iifname "{lan_iface}" udp dport {{ 53, 67 }} accept
+        iifname "{lan_iface}" tcp dport {{ 53, 80 }} accept
     }}
 
     chain forward {{
@@ -96,10 +96,10 @@ table inet filter {{
         ct state established,related accept
         
         # Forward Wi-Fi client traffic to Xray TUN
-        iif "{lan_iface}" oif "{tun_iface}" accept
+        iifname "{lan_iface}" oifname "{tun_iface}" accept
         
         # Fallback forward to WAN Ethernet
-        iif "{lan_iface}" oif "{wan_iface}" accept
+        iifname "{lan_iface}" oifname "{wan_iface}" accept
     }}
 
     chain output {{
@@ -112,10 +112,10 @@ table ip nat {{
         type nat hook postrouting priority srcnat; policy accept;
         
         # Masquerade traffic going to Xray TUN
-        oif "{tun_iface}" masquerade
+        oifname "{tun_iface}" masquerade
         
         # Masquerade traffic going direct to WAN
-        oif "{wan_iface}" masquerade
+        oifname "{wan_iface}" masquerade
     }}
 }}
 """
@@ -141,6 +141,16 @@ def apply_firewall_ruleset(wan_iface: str, lan_iface: str, tun_iface: str = "xra
     backup_file = None
 
     try:
+        # 1. Ensure kernel modules for NAT and masquerading are loaded
+        for mod in ["nf_tables", "nf_nat", "nft_nat", "nft_masq"]:
+            subprocess.run(["modprobe", mod], capture_output=True, timeout=2)
+        try:
+            mod_load_dir = Path("/etc/modules-load.d")
+            mod_load_dir.mkdir(parents=True, exist_ok=True)
+            (mod_load_dir / "vpn-gateway.conf").write_text("nft_nat\nnft_masq\nnf_nat\n")
+        except Exception:
+            pass
+
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         if target_file.exists():
             timestamp = int(time.time())

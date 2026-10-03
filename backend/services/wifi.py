@@ -208,7 +208,7 @@ def get_wifi_status() -> Dict[str, Any]:
 def generate_hostapd_content(iface: str, ssid: str, password: str, channel: int, country: str, ieee80211n: bool) -> str:
     """Generate production-ready hostapd.conf text."""
     chan_str = str(channel) if channel > 0 else "0"
-    ht_cap = "[HT20][SHORT-GI-20]" if ieee80211n else ""
+    ht_cap = "[HT20]" if ieee80211n else ""
 
     lines = [
         "# /etc/hostapd/hostapd.conf",
@@ -329,7 +329,7 @@ def apply_wifi_config(payload: Dict[str, Any]) -> Dict[str, Any]:
             # Ensure /etc/default/hostapd has DAEMON_CONF
             default_hostapd = Path("/etc/default/hostapd")
             default_hostapd.parent.mkdir(parents=True, exist_ok=True)
-            default_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\n')
+            default_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\nDAEMON_OPTS=""\n')
 
             # Unmask hostapd
             subprocess.run(["systemctl", "unmask", "hostapd"], capture_output=True, timeout=2)
