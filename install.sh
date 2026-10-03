@@ -20,6 +20,84 @@ log_success() { echo -e "${GREEN}[OK]${RESET} $*"; }
 log_warn()    { echo -e "${YELLOW}[WARN]${RESET} $*"; }
 log_error()   { echo -e "${RED}[ERROR]${RESET} $*" >&2; }
 
+# ------------------------------------------------------------------------------
+# Loading Animations (BLA_snake)
+# Reference: https://github.com/Silejonu/bash_loading_animations
+# ------------------------------------------------------------------------------
+BLA_snake=( 0.12 '[=     ]' '[~<    ]' '[~~=   ]' '[~~~<  ]' '[ ~~~= ]' '[  ~~~<]' '[   ~~~]' '[    ~~]' '[     ~]' '[      ]' )
+
+declare -a BLA_active_loading_animation
+BLA_loading_animation_pid=""
+BLA_loading_animation_msg=""
+
+BLA::play_loading_animation_loop() {
+    local frame
+    while true; do
+        for frame in "${BLA_active_loading_animation[@]}"; do
+            printf "\r\033[K${GREEN}${BOLD}%s${RESET} %s" "${frame}" "${BLA_loading_animation_msg}"
+            sleep "${BLA_loading_animation_frame_interval}"
+        done
+    done
+}
+
+BLA::start_loading_animation() {
+    local msg="${1:-}"
+    shift || true
+    BLA_loading_animation_msg="${msg}"
+    BLA_active_loading_animation=( "${@}" )
+    BLA_loading_animation_frame_interval="${BLA_active_loading_animation[0]:-0.12}"
+    unset "BLA_active_loading_animation[0]"
+
+    if [[ -t 1 || -c /dev/tty ]]; then
+        tput civis 2>/dev/null || true
+        BLA::play_loading_animation_loop &
+        BLA_loading_animation_pid="${!}"
+    else
+        log_info "${msg}..."
+    fi
+}
+
+BLA::stop_loading_animation() {
+    if [[ -n "${BLA_loading_animation_pid:-}" ]]; then
+        kill "${BLA_loading_animation_pid}" 2>/dev/null || true
+        wait "${BLA_loading_animation_pid}" 2>/dev/null || true
+        BLA_loading_animation_pid=""
+    fi
+    if [[ -t 1 || -c /dev/tty ]]; then
+        printf "\r\033[K"
+        tput cnorm 2>/dev/null || true
+    fi
+}
+
+trap 'BLA::stop_loading_animation' EXIT INT TERM
+
+run_with_spinner() {
+    local task_label="$1"
+    shift
+    BLA::start_loading_animation "${task_label}" "${BLA_snake[@]}"
+    local log_file
+    log_file="$(mktemp /tmp/vpn-gateway-task.XXXXXX 2>/dev/null || echo "/tmp/vpn-gateway-task.log")"
+    local rc=0
+    if "$@" > "${log_file}" 2>&1; then
+        rc=0
+    else
+        rc=$?
+    fi
+    BLA::stop_loading_animation
+    if [[ ${rc} -eq 0 ]]; then
+        log_success "${task_label}"
+        rm -f "${log_file}" 2>/dev/null || true
+        return 0
+    else
+        log_error "${task_label} (failed with exit code ${rc})"
+        if [[ -f "${log_file}" ]]; then
+            sed 's/^/  [LOG] /' "${log_file}" >&2
+            rm -f "${log_file}" 2>/dev/null || true
+        fi
+        return ${rc}
+    fi
+}
+
 # Paths & Source Resolution
 INSTALL_DIR="/opt/vpn-gateway"
 CONFIG_DIR="/etc/vpn-gateway"
@@ -71,7 +149,7 @@ check_arch() {
 # 2. Hardware & Interface Detection
 # ------------------------------------------------------------------------------
 detect_interfaces() {
-    log_info "Scanning network hardware..."
+    BLA::start_loading_animation "Scanning network hardware interfaces" "${BLA_snake[@]}"
 
     # Detect Ethernet interface (WAN)
     WAN_IFACE=""
@@ -89,7 +167,6 @@ detect_interfaces() {
         done
     fi
     WAN_IFACE="${WAN_IFACE:-enp3s0}"
-    log_success "WAN Interface (Ethernet): ${BOLD}${WAN_IFACE}${RESET}"
 
     # Detect Wireless interface (LAN AP)
     WIFI_IFACE=""
@@ -105,6 +182,10 @@ detect_interfaces() {
         done
     fi
     WIFI_IFACE="${WIFI_IFACE:-wlp4s0}"
+
+    BLA::stop_loading_animation
+
+    log_success "WAN Interface (Ethernet): ${BOLD}${WAN_IFACE}${RESET}"
     log_success "Wi-Fi Interface (Access Point): ${BOLD}${WIFI_IFACE}${RESET}"
 
     # Check AP mode support
@@ -223,10 +304,9 @@ install_minimal_packages() {
     command -v rfkill >/dev/null 2>&1 || pkgs+=("rfkill")
 
     if [[ ${#pkgs[@]} -gt 0 ]]; then
-        log_info "Installing minimal Python runtime: ${pkgs[*]}..."
         export DEBIAN_FRONTEND=noninteractive
-        apt-get update -y
-        apt-get install -y --no-install-recommends \
+        run_with_spinner "Updating APT package cache" apt-get update -y
+        run_with_spinner "Installing minimal packages (${pkgs[*]})" apt-get install -y --no-install-recommends \
             python3 \
             python3-venv \
             python3-pip \
@@ -285,13 +365,14 @@ ensure_source_files() {
 
     for repo in "${repos_to_try[@]}"; do
         for branch in "${candidate_branches[@]}"; do
-            log_info "Checking repository: ${repo} (branch: ${branch})..."
+            BLA::start_loading_animation "Checking repository ${repo} (${branch})" "${BLA_snake[@]}"
 
             # Attempt A: git clone
             if command -v git >/dev/null 2>&1; then
                 rm -rf "${tmp_dir}"
-                if git clone --depth 1 -b "${branch}" "https://github.com/${repo}.git" "${tmp_dir}" 2>/dev/null; then
+                if git clone --depth 1 -b "${branch}" "https://github.com/${repo}.git" "${tmp_dir}" >/dev/null 2>&1; then
                     if [[ -f "${tmp_dir}/backend/app.py" ]]; then
+                        BLA::stop_loading_animation
                         downloaded=1
                         GITHUB_REPO="${repo}"
                         GITHUB_BRANCH="${branch}"
@@ -306,6 +387,7 @@ ensure_source_files() {
             if command -v curl >/dev/null 2>&1; then
                 if curl -fsSL "${tarball_url}" 2>/dev/null | tar -xz -C "${tmp_dir}" --strip-components=1 2>/dev/null; then
                     if [[ -f "${tmp_dir}/backend/app.py" ]]; then
+                        BLA::stop_loading_animation
                         downloaded=1
                         GITHUB_REPO="${repo}"
                         GITHUB_BRANCH="${branch}"
@@ -315,6 +397,7 @@ ensure_source_files() {
             elif command -v wget >/dev/null 2>&1; then
                 if wget -qO- "${tarball_url}" 2>/dev/null | tar -xz -C "${tmp_dir}" --strip-components=1 2>/dev/null; then
                     if [[ -f "${tmp_dir}/backend/app.py" ]]; then
+                        BLA::stop_loading_animation
                         downloaded=1
                         GITHUB_REPO="${repo}"
                         GITHUB_BRANCH="${branch}"
@@ -322,6 +405,7 @@ ensure_source_files() {
                     fi
                 fi
             fi
+            BLA::stop_loading_animation
         done
     done
 
@@ -348,23 +432,22 @@ deploy_app() {
     chmod 700 "${CONFIG_DIR}/backups" 2>/dev/null || true
 
     # Copy files from SOURCE_DIR
-    cp -r "${SOURCE_DIR}/backend" "${INSTALL_DIR}/"
-    cp -r "${SOURCE_DIR}/web" "${INSTALL_DIR}/"
-    cp -r "${SOURCE_DIR}/configs" "${INSTALL_DIR}/"
-    cp "${SOURCE_DIR}/install.sh" "${INSTALL_DIR}/" 2>/dev/null || true
-    cp "${SOURCE_DIR}/update.sh" "${INSTALL_DIR}/" 2>/dev/null || true
-    chmod +x "${INSTALL_DIR}/install.sh" "${INSTALL_DIR}/update.sh" 2>/dev/null || true
+    run_with_spinner "Copying application and UI files" bash -c "
+        cp -r '${SOURCE_DIR}/backend' '${INSTALL_DIR}/' && \
+        cp -r '${SOURCE_DIR}/web' '${INSTALL_DIR}/' && \
+        cp -r '${SOURCE_DIR}/configs' '${INSTALL_DIR}/' && \
+        cp '${SOURCE_DIR}/install.sh' '${INSTALL_DIR}/' 2>/dev/null || true
+        cp '${SOURCE_DIR}/update.sh' '${INSTALL_DIR}/' 2>/dev/null || true
+        chmod +x '${INSTALL_DIR}/install.sh' '${INSTALL_DIR}/update.sh' 2>/dev/null || true
+    "
 
     # Setup Python virtual environment
     if [[ ! -d "${INSTALL_DIR}/venv" ]]; then
-        log_info "Creating Python virtual environment in ${INSTALL_DIR}/venv..."
-        python3 -m venv "${INSTALL_DIR}/venv"
+        run_with_spinner "Creating Python virtual environment (${INSTALL_DIR}/venv)" python3 -m venv "${INSTALL_DIR}/venv"
     fi
 
-    log_info "Installing backend dependencies (FastAPI, Uvicorn)..."
-    "${INSTALL_DIR}/venv/bin/pip" install --upgrade pip
-    "${INSTALL_DIR}/venv/bin/pip" install -r "${INSTALL_DIR}/backend/requirements.txt"
-    log_success "Backend dependencies installed."
+    run_with_spinner "Upgrading pip package manager" "${INSTALL_DIR}/venv/bin/pip" install --upgrade pip --quiet
+    run_with_spinner "Installing backend dependencies (FastAPI, Uvicorn, psutil)" "${INSTALL_DIR}/venv/bin/pip" install -r "${INSTALL_DIR}/backend/requirements.txt"
 }
 
 # ------------------------------------------------------------------------------
@@ -372,13 +455,6 @@ deploy_app() {
 # 8. Configure Networking & Services (Optional / Repair only)
 # ------------------------------------------------------------------------------
 configure_networking() {
-    log_info "Enabling IPv4 forwarding..."
-    cat <<EOF > /etc/sysctl.d/99-vpn-gateway.conf
-net.ipv4.ip_forward = 1
-net.ipv6.conf.all.disable_ipv6 = 0
-EOF
-    sysctl --system >/dev/null 2>&1 || true
-
     # Prepare default state config
     if [[ ! -f "${CONFIG_DIR}/config.json" ]]; then
         cat <<EOF > "${CONFIG_DIR}/config.json"
@@ -394,68 +470,76 @@ EOF
 EOF
     fi
 
-    # Unblock RF
-    rfkill unblock wifi 2>/dev/null || true
-    rfkill unblock all 2>/dev/null || true
+    run_with_spinner "Configuring kernel forwarding, AP configuration, and firewall" bash -c "
+        cat <<EOF > /etc/sysctl.d/99-vpn-gateway.conf
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.disable_ipv6 = 0
+EOF
+        sysctl --system >/dev/null 2>&1 || true
 
-    # Prevent NetworkManager conflict on Wi-Fi AP interface
-    mkdir -p /etc/NetworkManager/conf.d 2>/dev/null || true
-    cat <<EOF > /etc/NetworkManager/conf.d/99-unmanage-wlan.conf
+        # Unblock RF
+        rfkill unblock wifi 2>/dev/null || true
+        rfkill unblock all 2>/dev/null || true
+
+        # Prevent NetworkManager conflict on Wi-Fi AP interface
+        mkdir -p /etc/NetworkManager/conf.d 2>/dev/null || true
+        cat <<EOF > /etc/NetworkManager/conf.d/99-unmanage-wlan.conf
 [keyfile]
 unmanaged-devices=interface-name:${WIFI_IFACE}
 EOF
-    systemctl reload NetworkManager 2>/dev/null || true
+        systemctl reload NetworkManager 2>/dev/null || true
 
-    # Assign static IP and bring Wi-Fi link UP
-    ip addr replace 10.42.0.1/24 dev "${WIFI_IFACE}" 2>/dev/null || true
-    ip link set "${WIFI_IFACE}" up 2>/dev/null || true
+        # Assign static IP and bring Wi-Fi link UP
+        ip addr replace 10.42.0.1/24 dev \"${WIFI_IFACE}\" 2>/dev/null || true
+        ip link set \"${WIFI_IFACE}\" up 2>/dev/null || true
 
-    # Hostapd config & Debian daemon defaults
-    mkdir -p /etc/hostapd
-    sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
-        "${SOURCE_DIR}/configs/hostapd.conf" > /etc/hostapd/hostapd.conf
-    # Remove unsupported [SHORT-GI-20] if present in target hostapd.conf
-    sed -i 's/\[SHORT-GI-20\]//g' /etc/hostapd/hostapd.conf 2>/dev/null || true
+        # Hostapd config & Debian daemon defaults
+        mkdir -p /etc/hostapd
+        sed -e \"s/interface=wlp4s0/interface=${WIFI_IFACE}/g\" \
+            \"${SOURCE_DIR}/configs/hostapd.conf\" > /etc/hostapd/hostapd.conf
+        # Remove unsupported [SHORT-GI-20] if present in target hostapd.conf
+        sed -i 's/\\[SHORT-GI-20\\]//g' /etc/hostapd/hostapd.conf 2>/dev/null || true
 
-    cat <<EOF > /etc/default/hostapd
-DAEMON_CONF="/etc/hostapd/hostapd.conf"
-DAEMON_OPTS=""
+        cat <<EOF > /etc/default/hostapd
+DAEMON_CONF=\"/etc/hostapd/hostapd.conf\"
+DAEMON_OPTS=\"\"
 EOF
-    systemctl unmask hostapd 2>/dev/null || true
-    systemctl daemon-reload 2>/dev/null || true
+        systemctl unmask hostapd 2>/dev/null || true
+        systemctl daemon-reload 2>/dev/null || true
 
-    # Dnsmasq config
-    mkdir -p /etc/dnsmasq.d
-    sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
-        "${SOURCE_DIR}/configs/dnsmasq.conf" > /etc/dnsmasq.d/vpn-gateway.conf
+        # Dnsmasq config
+        mkdir -p /etc/dnsmasq.d
+        sed -e \"s/interface=wlp4s0/interface=${WIFI_IFACE}/g\" \
+            \"${SOURCE_DIR}/configs/dnsmasq.conf\" > /etc/dnsmasq.d/vpn-gateway.conf
 
-    # Kernel modules for NAT & masquerade
-    modprobe nf_tables 2>/dev/null || true
-    modprobe nf_nat 2>/dev/null || true
-    modprobe nft_nat 2>/dev/null || true
-    modprobe nft_masq 2>/dev/null || true
-    mkdir -p /etc/modules-load.d 2>/dev/null || true
-    cat <<EOF > /etc/modules-load.d/vpn-gateway.conf
+        # Kernel modules for NAT & masquerade
+        modprobe nf_tables 2>/dev/null || true
+        modprobe nf_nat 2>/dev/null || true
+        modprobe nft_nat 2>/dev/null || true
+        modprobe nft_masq 2>/dev/null || true
+        mkdir -p /etc/modules-load.d 2>/dev/null || true
+        cat <<EOF > /etc/modules-load.d/vpn-gateway.conf
 nft_nat
 nft_masq
 nf_nat
 EOF
 
-    # Nftables config & load
-    if [[ -f "${SOURCE_DIR}/configs/nftables.conf" ]]; then
-        sed -e "s/wlp4s0/${WIFI_IFACE}/g" -e "s/enp3s0/${WAN_IFACE}/g" \
-            "${SOURCE_DIR}/configs/nftables.conf" > /etc/nftables.conf
-        if command -v nft >/dev/null 2>&1; then
-            nft -f /etc/nftables.conf 2>/dev/null || true
-            systemctl enable --now nftables 2>/dev/null || true
+        # Nftables config & load
+        if [[ -f \"${SOURCE_DIR}/configs/nftables.conf\" ]]; then
+            sed -e \"s/wlp4s0/${WIFI_IFACE}/g\" -e \"s/enp3s0/${WAN_IFACE}/g\" \
+                \"${SOURCE_DIR}/configs/nftables.conf\" > /etc/nftables.conf
+            if command -v nft >/dev/null 2>&1; then
+                nft -f /etc/nftables.conf 2>/dev/null || true
+                systemctl enable --now nftables 2>/dev/null || true
+            fi
         fi
-    fi
 
-    # Install routing service
-    if [[ -f "${SOURCE_DIR}/systemd/vpn-gateway-routes.service" ]]; then
-        cp "${SOURCE_DIR}/systemd/vpn-gateway-routes.service" "${SYSTEMD_DIR}/"
-        systemctl enable vpn-gateway-routes.service 2>/dev/null || true
-    fi
+        # Install routing service
+        if [[ -f \"${SOURCE_DIR}/systemd/vpn-gateway-routes.service\" ]]; then
+            cp \"${SOURCE_DIR}/systemd/vpn-gateway-routes.service\" \"${SYSTEMD_DIR}/\"
+            systemctl enable vpn-gateway-routes.service 2>/dev/null || true
+        fi
+    "
 }
 
 # ------------------------------------------------------------------------------
@@ -466,11 +550,11 @@ setup_web_service() {
 
     cp "${SOURCE_DIR}/systemd/vpn-gateway.service" "${SYSTEMD_DIR}/"
 
-    systemctl daemon-reload
-    systemctl enable vpn-gateway.service
-    systemctl restart vpn-gateway.service
-
-    log_success "vpn-gateway.service is enabled and running."
+    run_with_spinner "Reloading systemd and restarting vpn-gateway.service" bash -c "
+        systemctl daemon-reload && \
+        systemctl enable vpn-gateway.service && \
+        systemctl restart vpn-gateway.service
+    "
 }
 
 # ------------------------------------------------------------------------------
