@@ -1693,6 +1693,423 @@ input:checked + .slider:before { transform: translateX(18px); }
 .ping-badge.none   { background: var(--neutral-badge-bg); color: var(--text-muted); border-color: var(--border); }
 
 /* --------------------------------------------------------------------------
+   Geozones & Routing Rules (VPN Page)
+   -------------------------------------------------------------------------- */
+.vpn-routing-card {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.routing-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.routing-section-header {
+  margin-bottom: 12px;
+}
+
+.routing-title-with-filters {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.routing-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.routing-preset-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  text-align: left;
+}
+
+.routing-preset-card:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-subtle);
+  transform: translateY(-1px);
+}
+
+.routing-preset-card.active {
+  border-color: var(--accent);
+  background: var(--accent-light, rgba(139, 92, 246, 0.06));
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.preset-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.preset-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.preset-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--neutral-badge-bg);
+  color: var(--text-muted);
+}
+
+.routing-preset-card.active .preset-badge {
+  background: var(--accent);
+  color: #fff;
+}
+
+.preset-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.preset-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-top: auto;
+}
+
+.routing-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.routing-stat-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.stat-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-direct { background-color: var(--success); }
+.dot-proxy  { background-color: var(--accent); }
+.dot-block  { background-color: var(--danger); }
+
+.routing-group-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-filter-tag {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-filter-tag:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.btn-filter-tag.active {
+  background: var(--text-primary);
+  color: var(--surface);
+  border-color: var(--text-primary);
+}
+
+/* Geozones Grid */
+.geozones-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.geozone-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  transition: var(--transition-fast);
+  position: relative;
+}
+
+.geozone-card:hover {
+  border-color: var(--border-hover);
+}
+
+.geozone-card.action-direct {
+  border-left: 3px solid var(--success);
+}
+
+.geozone-card.action-proxy {
+  border-left: 3px solid var(--accent);
+}
+
+.geozone-card.action-block {
+  border-left: 3px solid var(--danger);
+}
+
+.geozone-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.geozone-title-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.geozone-icon {
+  font-size: 20px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.geozone-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.geozone-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.geozone-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+
+.geozone-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.geo-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* 3-way Segmented Control */
+.geozone-segmented-control {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+  margin-top: auto;
+}
+
+.seg-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.seg-btn:hover {
+  color: var(--text-primary);
+}
+
+.seg-btn.active[data-action="direct"] {
+  background: var(--surface);
+  color: var(--success);
+  border: 1px solid var(--success-border);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.seg-btn.active[data-action="proxy"] {
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.seg-btn.active[data-action="block"] {
+  background: var(--surface);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Advanced Accordion */
+.routing-advanced-details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.routing-advanced-summary {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+
+.routing-advanced-summary:hover {
+  background: var(--surface-hover);
+}
+
+.routing-advanced-body {
+  padding: 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.routing-actions-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.routing-footer-buttons {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.routing-footer-status {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Wizard Routing Options */
+.wizard-routing-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.wizard-routing-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.wizard-routing-option:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-subtle);
+}
+
+.wizard-routing-option.active {
+  border-color: var(--accent);
+  background: var(--accent-light, rgba(139, 92, 246, 0.05));
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.wizard-routing-option input[type="radio"] {
+  margin-top: 3px;
+}
+
+.wizard-option-content {
+  flex: 1;
+}
+
+.wizard-option-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wizard-option-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.badge-recommended {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--success-bg);
+  color: var(--success);
+  border: 1px solid var(--success-border);
+}
+
+/* --------------------------------------------------------------------------
    Wi-Fi Page
    -------------------------------------------------------------------------- */
 .wifi-grid {
@@ -2223,6 +2640,18 @@ input:checked + .slider:before { transform: translateX(18px); }
   .wifi-grid,
   .network-grid,
   .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .routing-presets-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .geozones-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .routing-presets-grid {
     grid-template-columns: 1fr;
   }
 }

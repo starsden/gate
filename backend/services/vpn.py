@@ -17,6 +17,8 @@ import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from . import routing
+
 XRAY_CONF_PATH = Path("/etc/xray/config.json")
 CONFIG_DIR = Path("/etc/vpn-gateway")
 BACKUP_DIR = CONFIG_DIR / "backups"
@@ -169,7 +171,7 @@ def save_vpn_profile(profile: Dict[str, Any]) -> None:
             pass
 
 
-def generate_xray_config(profile: Dict[str, Any]) -> Dict[str, Any]:
+def generate_xray_config(profile: Dict[str, Any], routing_cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Generate complete Xray JSON configuration.
     Sets up 'tun' inbound (xray0) for client routing, and VLESS/REALITY outbound.
@@ -268,21 +270,7 @@ def generate_xray_config(profile: Dict[str, Any]) -> Dict[str, Any]:
                 },
             },
         ],
-        "routing": {
-            "domainStrategy": "AsIs",
-            "rules": [
-                {
-                    "type": "field",
-                    "ip": ["geoip:private"],
-                    "outboundTag": "direct",
-                },
-                {
-                    "type": "field",
-                    "network": "tcp,udp",
-                    "outboundTag": "proxy",
-                },
-            ],
-        },
+        "routing": routing.build_xray_routing_rules(routing_cfg),
     }
 
     return config
@@ -563,3 +551,65 @@ def apply_vpn_config(vless_uri: str) -> Dict[str, Any]:
             shutil.copy2(backup_file, target_file)
             subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
         return {"success": False, "error": f"Failed to apply Xray config: {str(e)}"}
+
+
+def reapply_vpn_with_routing(routing_cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Regenerate Xray config for currently active VPN profile with updated routing rules,
+    validate, apply, and restart daemon.
+    """
+    profile = read_vpn_profile()
+    if not profile or not profile.get("address"):
+        # No profile imported yet, routing settings saved for future imports
+        return {
+            "success": True,
+            "reloaded": False,
+            "message": "Маршрутизация сохранена. Применится автоматически при импорте или подключении VPN.",
+        }
+
+    xray_conf = generate_xray_config(profile, routing_cfg)
+    is_valid, val_msg = validate_xray_config(xray_conf)
+    if not is_valid:
+        return {"success": False, "error": f"Некорректная конфигурация Xray: {val_msg}"}
+
+    if not _is_linux() or not os.path.exists("/etc/xray"):
+        return {
+            "success": True,
+            "reloaded": True,
+            "message": "Правила маршрутизации успешно обновлены (dev mode).",
+        }
+
+    target_file = XRAY_CONF_PATH
+    backup_file = None
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        if target_file.exists():
+            timestamp = int(time.time())
+            backup_file = BACKUP_DIR / f"xray_config.json.{timestamp}.bak"
+            shutil.copy2(target_file, backup_file)
+
+        temp_file = target_file.with_suffix(".tmp")
+        with open(temp_file, "w") as f:
+            json.dump(xray_conf, f, indent=2)
+        temp_file.replace(target_file)
+
+        restart_res = subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=10)
+        check_res = subprocess.run(["systemctl", "is-active", "xray.service"], capture_output=True, text=True, timeout=4)
+        if check_res.stdout.strip() != "active":
+            if backup_file and backup_file.exists():
+                shutil.copy2(backup_file, target_file)
+                subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
+            err = restart_res.stderr.strip() or "Служба Xray не смогла запуститься с новыми правилами. Выполнен откат."
+            return {"success": False, "error": err}
+
+        return {
+            "success": True,
+            "reloaded": True,
+            "message": "Правила геозон применены, Xray перезапущен.",
+        }
+    except Exception as e:
+        if backup_file and backup_file.exists() and target_file.exists():
+            shutil.copy2(backup_file, target_file)
+            subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
+        return {"success": False, "error": f"Ошибка обновления правил Xray: {str(e)}"}
+

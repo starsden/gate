@@ -17,7 +17,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from backend.services import auth, backups, diagnostics, logs, network, system, vpn, wifi, firewall, clients, subscription, setup
+from backend.services import auth, backups, diagnostics, logs, network, system, vpn, wifi, firewall, clients, subscription, setup, routing
 from backend.app import app
 
 # ------------------------------------------------------------------------------
@@ -240,6 +240,75 @@ def test_subscription_service():
     print("      -> Subscription decoder, parser, SSL fallback, and state persistence OK")
 
 
+def test_routing_service():
+    print("[2.6/9] Testing routing.py service (Geosite & GeoIP catalog)...")
+    # Catalog check
+    assert len(routing.CATEGORIES_CATALOG) >= 14, "Catalog missing categories"
+    for item in routing.CATEGORIES_CATALOG:
+        assert "id" in item and "title" in item and "group" in item and "defaults" in item
+        assert len(item["tags"]) > 0
+
+    # Presets check
+    for p in ["bypass_ru", "all_vpn", "only_blocked", "custom"]:
+        assert p in routing.PRESETS
+
+    # Test load default config
+    cfg = routing.load_routing_config()
+    assert "mode" in cfg
+    assert "domain_strategy" in cfg
+    assert "categories" in cfg
+
+    # Test apply preset bypass_ru
+    res_b = routing.apply_routing_preset("bypass_ru")
+    assert res_b["mode"] == "bypass_ru"
+    assert res_b["categories"]["ru_services"] == "direct"
+    assert res_b["categories"]["gov_ru"] == "direct"
+    assert res_b["categories"]["banks_ru"] == "direct"
+    assert res_b["categories"]["ip_ru"] == "direct"
+    assert res_b["categories"]["ai_chat"] == "proxy"
+    assert res_b["categories"]["social_media"] == "proxy"
+    assert res_b["categories"]["adblock"] == "block"
+
+    # Test build Xray rules
+    xray_rules = routing.build_xray_routing_rules(res_b)
+    assert xray_rules["domainStrategy"] == "IPIfNonMatch"
+    rules = xray_rules["rules"]
+    assert len(rules) >= 4
+
+    # Check LAN is first
+    assert rules[0]["ip"] == ["geoip:private"]
+    assert rules[0]["outboundTag"] == "direct"
+
+    # Check block rule exists for adblock
+    block_rules = [r for r in rules if r.get("outboundTag") == "block"]
+    assert len(block_rules) >= 1
+    assert "geosite:category-ads-all" in block_rules[0].get("domain", [])
+
+    # Check direct rules contain ru
+    direct_domain_rules = [r for r in rules if r.get("outboundTag") == "direct" and "domain" in r]
+    assert len(direct_domain_rules) >= 1
+    assert any("geosite:ru" in r["domain"] for r in direct_domain_rules)
+
+    # Check direct ip rules contain geoip:ru
+    direct_ip_rules = [r for r in rules if r.get("outboundTag") == "direct" and "ip" in r and r.get("ip") != ["geoip:private"]]
+    assert len(direct_ip_rules) >= 1
+    assert any("geoip:ru" in r["ip"] for r in direct_ip_rules)
+
+    # Test apply preset only_blocked
+    res_ob = routing.apply_routing_preset("only_blocked")
+    assert res_ob["mode"] == "only_blocked"
+    assert res_ob["default_outbound"] == "direct"
+
+    # Test apply preset all_vpn
+    res_av = routing.apply_routing_preset("all_vpn")
+    assert res_av["mode"] == "all_vpn"
+    assert res_av["default_outbound"] == "proxy"
+
+    # Revert to bypass_ru
+    routing.apply_routing_preset("bypass_ru")
+    print("      -> Geozones catalog, presets, dynamic Xray rules, and domain strategy OK")
+
+
 def test_wifi_service():
     print("[3/8] Testing wifi.py service...")
     cfg = wifi.read_current_config()
@@ -387,11 +456,41 @@ async def test_fastapi_endpoints():
     new_server_id = r["json"]["active_server_id"]
     print("      -> [200] POST /api/vpn/subscription/import")
 
-    # Select via API
     r = await asgi_request(app, "POST", "/api/vpn/subscription/select", body={"server_id": new_server_id})
     assert r["status"] == 200
     assert r["json"]["success"] is True
     print("      -> [200] POST /api/vpn/subscription/select")
+
+    # Geozones Routing API Endpoints
+    r = await asgi_request(app, "GET", "/api/vpn/routing")
+    assert r["status"] == 200
+    assert r["json"]["success"] is True
+    assert "categories" in r["json"]
+    assert "presets" in r["json"]
+    print("      -> [200] GET /api/vpn/routing")
+
+    r = await asgi_request(app, "POST", "/api/vpn/routing/preset", body={"preset": "bypass_ru"})
+    assert r["status"] == 200
+    assert r["json"]["success"] is True
+    print("      -> [200] POST /api/vpn/routing/preset")
+
+    custom_body = {
+        "mode": "custom",
+        "domain_strategy": "IPIfNonMatch",
+        "default_outbound": "proxy",
+        "categories": {
+            "ru_services": "direct",
+            "gov_ru": "direct",
+            "banks_ru": "direct",
+            "ip_ru": "direct",
+            "ai_chat": "proxy",
+            "adblock": "block",
+        },
+    }
+    r = await asgi_request(app, "POST", "/api/vpn/routing", body=custom_body)
+    assert r["status"] == 200
+    assert r["json"]["success"] is True
+    print("      -> [200] POST /api/vpn/routing")
 
     # Setup Wizard API Endpoints
     r = await asgi_request(app, "GET", "/api/setup/status")
@@ -525,6 +624,12 @@ def test_html_assets():
     assert 'id="sub-servers-count-badge"' in html
     assert 'id="sub-meta-bar"' in html
 
+    # Check Geozones Routing UI elements
+    assert 'id="routing-presets-container"' in html
+    assert 'id="geozones-cards-grid"' in html
+    assert 'id="btn-routing-save"' in html
+    assert 'id="wizard-routing-preset-group"' in html
+
     # Check CSS syntax (balanced braces)
     assert css.count("{") == css.count("}"), "CSS brace imbalance detected!"
 
@@ -538,6 +643,7 @@ def main():
     test_auth_service()
     test_vpn_parser()
     test_subscription_service()
+    test_routing_service()
     test_setup_service()
     test_wifi_service()
     test_diagnostics_service()

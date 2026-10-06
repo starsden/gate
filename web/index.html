@@ -741,6 +741,121 @@
               </div>
             </div>
 
+            <!-- Geozones & Routing Rules Card -->
+            <div class="card vpn-routing-card full-width">
+              <div class="card-header">
+                <div class="card-icon-title">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                  </svg>
+                  <div>
+                    <span class="card-title">Маршрутизация геозон (Geosite / GeoIP)</span>
+                    <p class="card-desc">Интеллектуальное разделение трафика между прямым подключением (Direct), VPN-туннелем и блокировкой (Block).</p>
+                  </div>
+                </div>
+                <div class="routing-header-actions">
+                  <span class="status-badge badge-active" id="routing-active-mode-badge">🚀 Обход блокировок</span>
+                </div>
+              </div>
+
+              <div class="card-body">
+                <!-- Section 1: Presets -->
+                <div class="routing-section-header">
+                  <span class="card-title" style="font-size: 1.05rem;">Готовые профили маршрутизации</span>
+                  <p class="card-desc">Выберите готовый сценарий в один клик. Все категории настроятся автоматически:</p>
+                </div>
+
+                <div class="routing-presets-grid" id="routing-presets-container">
+                  <!-- Rendered dynamically by JS with fallbacks -->
+                </div>
+
+                <!-- Section 2: Summary Stats -->
+                <div class="routing-stats-bar">
+                  <div class="routing-stat-chip chip-direct">
+                    <span class="stat-indicator dot-direct"></span>
+                    <span class="stat-text">Прямое подключение (Direct): <strong id="routing-count-direct">0</strong></span>
+                  </div>
+                  <div class="routing-stat-chip chip-proxy">
+                    <span class="stat-indicator dot-proxy"></span>
+                    <span class="stat-text">Через VPN (Proxy): <strong id="routing-count-proxy">0</strong></span>
+                  </div>
+                  <div class="routing-stat-chip chip-block">
+                    <span class="stat-indicator dot-block"></span>
+                    <span class="stat-text">Блокировка (Block): <strong id="routing-count-block">0</strong></span>
+                  </div>
+                </div>
+
+                <!-- Section 3: Geozones & Categories Selector -->
+                <div class="routing-section-header mt-4">
+                  <div class="routing-title-with-filters">
+                    <div>
+                      <span class="card-title" style="font-size: 1.05rem;">Каталог геозон и категорий сервисов</span>
+                      <p class="card-desc">Выберите нужное действие для каждой группы. Ничего вручную вводить не требуется.</p>
+                    </div>
+                    <div class="routing-group-filters" id="routing-group-filters">
+                      <button type="button" class="btn-filter-tag active" data-group="all">Все (14)</button>
+                      <button type="button" class="btn-filter-tag" data-group="domestic">🇷🇺 Россия и СНГ</button>
+                      <button type="button" class="btn-filter-tag" data-group="blocked_media">🌍 Зарубежные сервисы</button>
+                      <button type="button" class="btn-filter-tag" data-group="security">🛡️ Безопасность</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Geozones Grid -->
+                <div class="geozones-grid" id="geozones-cards-grid">
+                  <div class="table-loading" style="padding: 30px; text-align: center;">Загрузка каталога геозон...</div>
+                </div>
+
+                <!-- Section 4: Advanced Strategy Accordion -->
+                <details class="routing-advanced-details mt-4">
+                  <summary class="routing-advanced-summary">
+                    <span>⚙️ Дополнительные параметры ядра (DNS и Fallback)</span>
+                    <span class="summary-arrow">▾</span>
+                  </summary>
+                  <div class="routing-advanced-body">
+                    <div class="form-row-2">
+                      <div class="form-group">
+                        <label class="form-label" for="routing-domain-strategy">Стратегия разрешения доменов (Domain Strategy)</label>
+                        <select id="routing-domain-strategy" class="form-control">
+                          <option value="IPIfNonMatch">IPIfNonMatch — Умный DNS (рекомендуется)</option>
+                          <option value="IPOnDemand">IPOnDemand — Резолвинг по требованию</option>
+                          <option value="AsIs">AsIs — Без DNS-резолвинга (только прямое совпадение доменов)</option>
+                        </select>
+                        <span class="form-hint">Если домен не совпал с geosite, IPIfNonMatch резолвит его для сопоставления с geoip.</span>
+                      </div>
+
+                      <div class="form-group">
+                        <label class="form-label" for="routing-default-outbound">Действие по умолчанию для прочего трафика</label>
+                        <select id="routing-default-outbound" class="form-control">
+                          <option value="proxy">Через VPN туннель (Proxy) — Максимальная защита</option>
+                          <option value="direct">Напрямую через интернет-провайдера (Direct)</option>
+                        </select>
+                        <span class="form-hint">Применяется к трафику, не подошедшему ни под одно из правил выше.</span>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+              </div>
+
+              <div class="card-footer routing-actions-footer">
+                <div class="routing-footer-status" id="routing-save-status"></div>
+                <div class="routing-footer-buttons">
+                  <button type="button" id="btn-routing-reset-preset" class="btn btn-secondary btn-sm">
+                    🔄 Сбросить к рекомендованным
+                  </button>
+                  <button type="button" id="btn-routing-save" class="btn btn-primary btn-sm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Сохранить и применить правила
+                  </button>
+                </div>
+              </div>
+            </div>
+
           </div>
 
         </section>
@@ -1629,6 +1744,34 @@
               <span class="preview-label">Безопасность:</span>
               <span class="preview-val" id="wizard-vpn-preview-sec">REALITY</span>
             </div>
+          </div>
+
+          <div class="form-group mt-3" id="wizard-routing-preset-group">
+            <label class="form-label">Режим маршрутизации геозон (Geosite / GeoIP)</label>
+            <div class="wizard-routing-options">
+              <label class="wizard-routing-option active">
+                <input type="radio" name="wizard-routing-preset" value="bypass_ru" checked />
+                <div class="wizard-option-content">
+                  <div class="wizard-option-title">🚀 Обход блокировок (Bypass RU) <span class="badge-recommended">Рекомендуется</span></div>
+                  <div class="wizard-option-desc">Российские сайты, банки, госуслуги и IP РФ идут напрямую. Зарубежные и заблокированные ресурсы идут через VPN. Встроенный AdBlock.</div>
+                </div>
+              </label>
+              <label class="wizard-routing-option">
+                <input type="radio" name="wizard-routing-preset" value="all_vpn" />
+                <div class="wizard-option-content">
+                  <div class="wizard-option-title">🌐 Полный VPN (Global)</div>
+                  <div class="wizard-option-desc">Весь интернет-трафик направляется через VPN туннель (кроме локальной сети LAN).</div>
+                </div>
+              </label>
+              <label class="wizard-routing-option">
+                <input type="radio" name="wizard-routing-preset" value="only_blocked" />
+                <div class="wizard-option-content">
+                  <div class="wizard-option-title">🛡️ Только заблокированные</div>
+                  <div class="wizard-option-desc">Трафик идёт напрямую через провайдера, через VPN идут только YouTube, Instagram, Discord, AI.</div>
+                </div>
+              </label>
+            </div>
+            <span class="form-hint">Вы сможете в любой момент изменить настройки для каждой категории в разделе VPN.</span>
           </div>
 
           <div class="skip-vpn-box">

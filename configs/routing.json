@@ -1,0 +1,13 @@
+{
+  "mode": "custom",
+  "domain_strategy": "IPIfNonMatch",
+  "default_outbound": "proxy",
+  "categories": {
+    "ru_services": "direct",
+    "gov_ru": "direct",
+    "banks_ru": "direct",
+    "ip_ru": "direct",
+    "ai_chat": "proxy",
+    "adblock": "block"
+  }
+}

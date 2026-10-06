@@ -22,6 +22,7 @@ from .services import auth as auth_service
 from .services import backups as backups_service
 from .services import subscription as subscription_service
 from .services import setup as setup_service
+from .services import routing as routing_service
 
 router = APIRouter(prefix="/api")
 
@@ -230,6 +231,64 @@ def import_vless(payload: Dict[str, str]) -> Dict[str, Any]:
     except Exception:
         pass
     return res
+
+
+# -------------------------------------------------------------
+# Geozones & Routing Configuration Endpoints (Geosite / GeoIP)
+# -------------------------------------------------------------
+
+@router.get("/vpn/routing")
+def get_vpn_routing() -> Dict[str, Any]:
+    """Retrieve geozones, routing rules, presets, and domain strategy."""
+    return routing_service.get_routing_status()
+
+
+@router.post("/vpn/routing")
+def update_vpn_routing(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Save geozones routing rules and reload Xray daemon."""
+    mode = payload.get("mode", "custom")
+    domain_strategy = payload.get("domain_strategy", "IPIfNonMatch")
+    default_outbound = payload.get("default_outbound", "proxy")
+    categories = payload.get("categories", {})
+
+    if not isinstance(categories, dict):
+        raise HTTPException(status_code=400, detail="Field 'categories' must be a dictionary.")
+
+    cfg = {
+        "mode": mode,
+        "domain_strategy": domain_strategy,
+        "default_outbound": default_outbound,
+        "categories": categories,
+    }
+    routing_service.save_routing_config(cfg)
+    vpn_res = vpn_service.reapply_vpn_with_routing(cfg)
+    if not vpn_res.get("success"):
+        raise HTTPException(status_code=400, detail=vpn_res.get("error", "Failed to reload Xray routing"))
+
+    return {
+        "success": True,
+        "message": vpn_res.get("message", "Правила маршрутизации успешно сохранены."),
+        "status": routing_service.get_routing_status(),
+    }
+
+
+@router.post("/vpn/routing/preset")
+def apply_routing_preset_endpoint(payload: Dict[str, str]) -> Dict[str, Any]:
+    """Apply a predefined routing profile (bypass_ru, all_vpn, only_blocked)."""
+    preset_id = payload.get("preset", "").strip()
+    if not preset_id:
+        raise HTTPException(status_code=400, detail="Missing 'preset' in request body.")
+    try:
+        updated_cfg = routing_service.apply_routing_preset(preset_id)
+        vpn_res = vpn_service.reapply_vpn_with_routing(updated_cfg)
+        return {
+            "success": True,
+            "message": f"Пресет '{preset_id}' успешно применен.",
+            "status": routing_service.get_routing_status(),
+            "xray_reloaded": vpn_res.get("reloaded", False),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # -------------------------------------------------------------

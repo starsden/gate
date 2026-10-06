@@ -138,6 +138,20 @@
     subMetaUrlVal: document.getElementById("sub-meta-url-val"),
     subMetaTimeVal: document.getElementById("sub-meta-time-val"),
 
+    // Geozones & Routing Elements
+    routingActiveModeBadge: document.getElementById("routing-active-mode-badge"),
+    routingPresetsContainer: document.getElementById("routing-presets-container"),
+    routingCountDirect: document.getElementById("routing-count-direct"),
+    routingCountProxy: document.getElementById("routing-count-proxy"),
+    routingCountBlock: document.getElementById("routing-count-block"),
+    routingGroupFilters: document.getElementById("routing-group-filters"),
+    geozonesCardsGrid: document.getElementById("geozones-cards-grid"),
+    routingDomainStrategy: document.getElementById("routing-domain-strategy"),
+    routingDefaultOutbound: document.getElementById("routing-default-outbound"),
+    btnRoutingResetPreset: document.getElementById("btn-routing-reset-preset"),
+    btnRoutingSave: document.getElementById("btn-routing-save"),
+    routingSaveStatus: document.getElementById("routing-save-status"),
+
     // Wi-Fi Page Elements
     wifiStatusBadge: document.getElementById("wifi-status-badge"),
     wifiInfoIface: document.getElementById("wifi-info-iface"),
@@ -436,6 +450,7 @@
     } else if (pageId === "vpn") {
       fetchVpnData();
       fetchSubscriptionData();
+      fetchRoutingData();
     } else if (pageId === "network") {
       fetchNetworkData();
     } else if (pageId === "diagnostics") {
@@ -703,6 +718,7 @@
       fetchDevicesData(),
       fetchVpnData(),
       fetchSubscriptionData(),
+      fetchRoutingData(),
       fetchNetworkData(),
       fetchDiagnosticsData(),
       fetchBackupsData(),
@@ -1269,6 +1285,311 @@
         }
       });
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // Geozones & Routing Rules Manager (Geosite / GeoIP)
+  // --------------------------------------------------------------------------
+
+  async function fetchRoutingData() {
+    try {
+      const res = await fetch("/api/vpn/routing");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      state.routingData = data;
+      state.routingPendingMode = data.mode;
+
+      // Seed pending categories
+      state.routingPendingCategories = {};
+      if (Array.isArray(data.categories)) {
+        data.categories.forEach((c) => {
+          state.routingPendingCategories[c.id] = c.current_action;
+        });
+      }
+
+      renderRoutingData(data);
+    } catch (err) {
+      console.error("Failed to fetch routing data:", err);
+    }
+  }
+
+  function renderRoutingData(data) {
+    if (!data) return;
+
+    // 1. Header Mode Badge
+    if (elements.routingActiveModeBadge) {
+      const preset = (data.presets || []).find((p) => p.id === data.mode);
+      const icon = preset ? preset.icon : "⚙️";
+      const name = preset ? preset.name : "Пользовательский";
+      elements.routingActiveModeBadge.textContent = `${icon} ${name}`;
+      elements.routingActiveModeBadge.className = data.mode === "bypass_ru" ? "status-badge badge-active" : "status-badge badge-success";
+    }
+
+    // 2. Presets Cards
+    if (elements.routingPresetsContainer) {
+      elements.routingPresetsContainer.innerHTML = "";
+      const presets = data.presets || [];
+      presets.forEach((p) => {
+        const card = document.createElement("div");
+        const isActive = p.id === state.routingPendingMode;
+        card.className = `routing-preset-card ${isActive ? "active" : ""}`;
+        card.setAttribute("data-preset", p.id);
+        card.innerHTML = `
+          <div class="preset-card-top">
+            <span class="preset-icon">${p.icon || "⚙️"}</span>
+            <span class="preset-badge">${p.badge || "Профиль"}</span>
+          </div>
+          <div class="preset-title">${p.name}</div>
+          <div class="preset-desc">${p.description}</div>
+        `;
+        card.addEventListener("click", () => {
+          applyRoutingPreset(p.id);
+        });
+        elements.routingPresetsContainer.appendChild(card);
+      });
+    }
+
+    // 3. Stats Chips
+    updateRoutingSummaryCounts();
+
+    // 4. Advanced Settings
+    if (elements.routingDomainStrategy) {
+      elements.routingDomainStrategy.value = data.domain_strategy || "IPIfNonMatch";
+    }
+    if (elements.routingDefaultOutbound) {
+      elements.routingDefaultOutbound.value = data.default_outbound || "proxy";
+    }
+
+    // 5. Categories Grid
+    renderGeozonesCards();
+  }
+
+  function updateRoutingSummaryCounts() {
+    let direct = 0;
+    let proxy = 0;
+    let block = 0;
+
+    const cats = state.routingPendingCategories || {};
+    Object.values(cats).forEach((action) => {
+      if (action === "direct") direct++;
+      else if (action === "proxy") proxy++;
+      else if (action === "block") block++;
+    });
+
+    if (elements.routingCountDirect) elements.routingCountDirect.textContent = String(direct);
+    if (elements.routingCountProxy) elements.routingCountProxy.textContent = String(proxy);
+    if (elements.routingCountBlock) elements.routingCountBlock.textContent = String(block);
+  }
+
+  function renderGeozonesCards() {
+    if (!elements.geozonesCardsGrid || !state.routingData) return;
+    const allCategories = state.routingData.categories || [];
+    const filter = state.routingFilterGroup || "all";
+
+    const filtered = filter === "all"
+      ? allCategories
+      : allCategories.filter((c) => c.group === filter);
+
+    if (filtered.length === 0) {
+      elements.geozonesCardsGrid.innerHTML = `
+        <div class="table-loading" style="grid-column: 1 / -1; padding: 24px; text-align: center;">
+          В этой группе нет категорий.
+        </div>
+      `;
+      return;
+    }
+
+    elements.geozonesCardsGrid.innerHTML = "";
+
+    filtered.forEach((cat) => {
+      const currentAction = state.routingPendingCategories[cat.id] || cat.current_action || "direct";
+      const card = document.createElement("div");
+      card.className = `geozone-card action-${currentAction}`;
+      card.id = `geozone-card-${cat.id}`;
+
+      // Build tags
+      const tags = (cat.tags || []).map((t) => `<span class="geo-badge font-mono">${t}</span>`).join("");
+
+      card.innerHTML = `
+        <div class="geozone-card-header">
+          <div class="geozone-title-wrap">
+            <span class="geozone-icon">${cat.icon || "🌐"}</span>
+            <div>
+              <div class="geozone-name">${cat.title}</div>
+              <div class="geozone-subtitle">${cat.subtitle || ""}</div>
+            </div>
+          </div>
+        </div>
+        <div class="geozone-desc">${cat.description || ""}</div>
+        <div class="geozone-tags-row">${tags}</div>
+        <div class="geozone-segmented-control" role="group" aria-label="Действие для ${cat.title}">
+          <button type="button" class="seg-btn ${currentAction === "direct" ? "active" : ""}" data-action="direct" data-id="${cat.id}">
+            ✓ Прямо
+          </button>
+          <button type="button" class="seg-btn ${currentAction === "proxy" ? "active" : ""}" data-action="proxy" data-id="${cat.id}">
+            ⚡ VPN
+          </button>
+          <button type="button" class="seg-btn ${currentAction === "block" ? "active" : ""}" data-action="block" data-id="${cat.id}">
+            ✕ Блок
+          </button>
+        </div>
+      `;
+
+      card.querySelectorAll(".seg-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const action = btn.getAttribute("data-action");
+          setGeozoneAction(cat.id, action);
+        });
+      });
+
+      elements.geozonesCardsGrid.appendChild(card);
+    });
+  }
+
+  function setGeozoneAction(categoryId, action) {
+    state.routingPendingCategories[categoryId] = action;
+    state.routingPendingMode = "custom";
+
+    const card = document.getElementById(`geozone-card-${categoryId}`);
+    if (card) {
+      card.className = `geozone-card action-${action}`;
+      card.querySelectorAll(".seg-btn").forEach((b) => {
+        if (b.getAttribute("data-action") === action) {
+          b.classList.add("active");
+        } else {
+          b.classList.remove("active");
+        }
+      });
+    }
+
+    if (elements.routingPresetsContainer) {
+      elements.routingPresetsContainer.querySelectorAll(".routing-preset-card").forEach((c) => {
+        c.classList.remove("active");
+        if (c.getAttribute("data-preset") === "custom") {
+          c.classList.add("active");
+        }
+      });
+    }
+
+    updateRoutingSummaryCounts();
+    markRoutingDirty();
+  }
+
+  function markRoutingDirty() {
+    if (elements.routingSaveStatus) {
+      elements.routingSaveStatus.innerHTML = `<span style="color:var(--warning);">● Есть несохраненные изменения</span>`;
+    }
+  }
+
+  async function applyRoutingPreset(presetId) {
+    showToast(`Применение профиля ${presetId}...`, "info", 1500);
+    try {
+      const res = await fetch("/api/vpn/routing/preset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preset: presetId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || "Failed to apply preset");
+
+      showToast(data.message || `Профиль '${presetId}' успешно применен!`, "success", 3000);
+      if (elements.routingSaveStatus) {
+        elements.routingSaveStatus.innerHTML = `<span style="color:var(--success);">✓ Профиль применен и активен</span>`;
+        setTimeout(() => {
+          if (elements.routingSaveStatus) elements.routingSaveStatus.innerHTML = "";
+        }, 4000);
+      }
+      await fetchRoutingData();
+    } catch (err) {
+      showToast(`Ошибка применения профиля: ${err.message}`, "danger", 4000);
+    }
+  }
+
+  async function saveRoutingConfig() {
+    if (!elements.btnRoutingSave) return;
+    elements.btnRoutingSave.disabled = true;
+    elements.btnRoutingSave.innerHTML = `<span style="display:inline-block;animation:spin 0.8s linear infinite;">⏳</span> Сохранение...`;
+
+    try {
+      const payload = {
+        mode: state.routingPendingMode || "custom",
+        domain_strategy: elements.routingDomainStrategy ? elements.routingDomainStrategy.value : "IPIfNonMatch",
+        default_outbound: elements.routingDefaultOutbound ? elements.routingDefaultOutbound.value : "proxy",
+        categories: state.routingPendingCategories || {},
+      };
+
+      const res = await fetch("/api/vpn/routing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || "Failed to save routing");
+
+      showToast(data.message || "Правила маршрутизации успешно применены!", "success", 3500);
+      if (elements.routingSaveStatus) {
+        elements.routingSaveStatus.innerHTML = `<span style="color:var(--success);">✓ Конфигурация сохранена в ядре Xray</span>`;
+        setTimeout(() => {
+          if (elements.routingSaveStatus) elements.routingSaveStatus.innerHTML = "";
+        }, 4000);
+      }
+      await fetchRoutingData();
+    } catch (err) {
+      showToast(`Ошибка сохранения маршрутизации: ${err.message}`, "danger", 4000);
+      if (elements.routingSaveStatus) {
+        elements.routingSaveStatus.innerHTML = `<span style="color:var(--danger);">✕ Ошибка: ${err.message}</span>`;
+      }
+    } finally {
+      elements.btnRoutingSave.disabled = false;
+      elements.btnRoutingSave.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Сохранить и применить правила
+      `;
+    }
+  }
+
+  function initRoutingActions() {
+    // Filter buttons
+    if (elements.routingGroupFilters) {
+      elements.routingGroupFilters.querySelectorAll(".btn-filter-tag").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          elements.routingGroupFilters.querySelectorAll(".btn-filter-tag").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          state.routingFilterGroup = btn.getAttribute("data-group") || "all";
+          renderGeozonesCards();
+        });
+      });
+    }
+
+    // Save button
+    if (elements.btnRoutingSave) {
+      elements.btnRoutingSave.addEventListener("click", saveRoutingConfig);
+    }
+
+    // Reset button
+    if (elements.btnRoutingResetPreset) {
+      elements.btnRoutingResetPreset.addEventListener("click", () => {
+        applyRoutingPreset("bypass_ru");
+      });
+    }
+
+    // Domain strategy / Default outbound changes
+    if (elements.routingDomainStrategy) {
+      elements.routingDomainStrategy.addEventListener("change", markRoutingDirty);
+    }
+    if (elements.routingDefaultOutbound) {
+      elements.routingDefaultOutbound.addEventListener("change", markRoutingDirty);
+    }
+
+    // Wizard routing preset radio changes
+    document.querySelectorAll('input[name="wizard-routing-preset"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        document.querySelectorAll(".wizard-routing-option").forEach((opt) => opt.classList.remove("active"));
+        radio.closest(".wizard-routing-option")?.classList.add("active");
+      });
+    });
   }
 
   // --------------------------------------------------------------------------
@@ -2839,6 +3160,14 @@
       if (elements.wizardVpnSkipCheck && data.skip) {
         elements.wizardVpnSkipCheck.checked = true;
       }
+      if (data.routing_preset) {
+        const rad = document.querySelector(`input[name="wizard-routing-preset"][value="${data.routing_preset}"]`);
+        if (rad) {
+          rad.checked = true;
+          document.querySelectorAll(".wizard-routing-option").forEach((opt) => opt.classList.remove("active"));
+          rad.closest(".wizard-routing-option")?.classList.add("active");
+        }
+      }
     } catch (err) {
       console.warn("Failed to load wizard VPN:", err);
     }
@@ -2878,11 +3207,18 @@
       }
     }
 
+    const presetRadio = document.querySelector('input[name="wizard-routing-preset"]:checked');
+    const routingPreset = presetRadio ? presetRadio.value : "bypass_ru";
+
     try {
       const res = await fetch("/api/setup/vpn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vless_uri: uri, skip: skip || !uri }),
+        body: JSON.stringify({
+          vless_uri: uri,
+          skip: skip || !uri,
+          routing_preset: routingPreset,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || data.error || "Failed to save VPN");
@@ -3126,6 +3462,7 @@
     initNavigation();
     initWifiForm();
     initVpnActions();
+    initRoutingActions();
     initNetworkActions();
     initDiagnosticsActions();
     initAuthAndSettingsActions();
