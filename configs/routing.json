@@ -1,5 +1,5 @@
 {
-  "mode": "custom",
+  "mode": "bypass_ru",
   "domain_strategy": "IPIfNonMatch",
   "default_outbound": "proxy",
   "categories": {
@@ -7,7 +7,15 @@
     "gov_ru": "direct",
     "banks_ru": "direct",
     "ip_ru": "direct",
+    "by_kz": "direct",
     "ai_chat": "proxy",
-    "adblock": "block"
+    "social_media": "proxy",
+    "video_streaming": "proxy",
+    "messengers": "proxy",
+    "dev_tools": "proxy",
+    "anticensorship": "proxy",
+    "google_meta": "proxy",
+    "adblock": "block",
+    "porn": "direct"
   }
 }

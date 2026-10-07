@@ -276,8 +276,35 @@ def generate_xray_config(profile: Dict[str, Any], routing_cfg: Optional[Dict[str
     return config
 
 
+def sanitize_unsupported_geosite(config_dict: Dict[str, Any], missing_code: str) -> bool:
+    """
+    Remove all occurrences of geosite:<missing_code> from routing rules.
+    Case-insensitive matching. Modifies config_dict in-place.
+    Returns True if at least one tag was removed.
+    """
+    changed = False
+    routing_obj = config_dict.get("routing", {})
+    rules = routing_obj.get("rules", [])
+    target = f"geosite:{missing_code}".lower()
+
+    for rule in rules:
+        if "domain" in rule and isinstance(rule["domain"], list):
+            new_domains = [
+                d for d in rule["domain"]
+                if not (isinstance(d, str) and d.lower() == target)
+            ]
+            if len(new_domains) != len(rule["domain"]):
+                rule["domain"] = new_domains
+                changed = True
+    return changed
+
+
 def validate_xray_config(config_dict: Dict[str, Any]) -> Tuple[bool, str]:
-    """Test Xray configuration syntax using 'xray -test' if installed."""
+    """
+    Test Xray configuration syntax using 'xray -test' if installed.
+    If 'xray -test' reports unsupported geosite codes (e.g. 'code not found in geosite.dat: RU'),
+    automatically strips the missing geosite tags from the rules and retries.
+    """
     if not shutil.which("xray"):
         # Syntactic checks in python
         if not config_dict.get("outbounds"):
@@ -286,15 +313,30 @@ def validate_xray_config(config_dict: Dict[str, Any]) -> Tuple[bool, str]:
 
     temp_path = Path("/tmp/xray_test_conf.json")
     try:
-        with open(temp_path, "w") as f:
-            json.dump(config_dict, f, indent=2)
+        max_attempts = 15
+        last_err = ""
+        for _ in range(max_attempts):
+            with open(temp_path, "w") as f:
+                json.dump(config_dict, f, indent=2)
 
-        res = subprocess.run(["xray", "-test", "-config", str(temp_path)], capture_output=True, text=True, timeout=5)
-        if res.returncode == 0:
-            return True, "Xray configuration is valid."
-        else:
-            err = res.stderr.strip() or res.stdout.strip()
-            return False, f"Xray test failed: {err}"
+            res = subprocess.run(["xray", "-test", "-config", str(temp_path)], capture_output=True, text=True, timeout=5)
+            if res.returncode == 0:
+                return True, "Xray configuration is valid."
+
+            last_err = res.stderr.strip() or res.stdout.strip()
+            # Match patterns like:
+            # - code not found in geosite.dat: RU
+            # - failed to load geosite: RU
+            # - failed to parse domain rule: geosite:ru
+            match = re.search(r"(?:code not found in geosite\.dat:\s*|failed to load geosite:\s*|failed to parse domain rule:\s*geosite:)([A-Za-z0-9_-]+)", last_err, re.IGNORECASE)
+            if match:
+                missing_code = match.group(1).strip()
+                if sanitize_unsupported_geosite(config_dict, missing_code):
+                    continue  # Retry validation with missing code removed
+
+            return False, f"Xray test failed: {last_err}"
+
+        return False, f"Xray test failed after sanitizing: {last_err}"
     except Exception as e:
         return False, f"Validation error: {str(e)}"
     finally:

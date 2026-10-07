@@ -12,6 +12,110 @@ from typing import Any, Dict, List, Optional
 ROUTING_CONFIG_PATH = Path("/etc/vpn-gateway/routing.json")
 LOCAL_ROUTING_CONFIG = Path(__file__).resolve().parent.parent.parent / "configs" / "routing.json"
 
+# Standard upstream XTLS/v2fly geosite tags present in vanilla geosite.dat
+STANDARD_SAFE_GEOSITES = {
+    "openai",
+    "anthropic",
+    "google",
+    "youtube",
+    "netflix",
+    "twitch",
+    "spotify",
+    "discord",
+    "telegram",
+    "github",
+    "docker",
+    "notion",
+    "medium",
+    "instagram",
+    "facebook",
+    "twitter",
+    "microsoft",
+    "apple",
+    "category-ads-all",
+    "category-porn",
+}
+
+_cached_geosite_tags: Optional[set] = None
+_cached_geosite_mtime: float = 0.0
+
+GEOSITE_LOCATIONS = [
+    Path(os.environ.get("XRAY_LOCATION_ASSET", "")) / "geosite.dat" if os.environ.get("XRAY_LOCATION_ASSET") else None,
+    Path("/usr/local/share/xray/geosite.dat"),
+    Path("/usr/share/xray/geosite.dat"),
+    Path("/etc/xray/geosite.dat"),
+    Path("/usr/local/bin/geosite.dat"),
+    Path("/usr/bin/geosite.dat"),
+]
+
+
+def get_installed_geosite_tags() -> set:
+    """
+    Inspect local geosite.dat binary if present on disk, extracting all available
+    category tags. Caches results based on file modification timestamp.
+    """
+    global _cached_geosite_tags, _cached_geosite_mtime
+    for p in GEOSITE_LOCATIONS:
+        if p and p.is_file():
+            try:
+                mtime = p.stat().st_mtime
+                if _cached_geosite_tags is not None and _cached_geosite_mtime == mtime:
+                    return _cached_geosite_tags
+
+                tags = set()
+                data = p.read_bytes()
+                data_len = len(data)
+                idx = 0
+                # Protobuf GeoSiteList parser: each entry starts with field 1 (tag string):
+                # 0x0a + varint length + ASCII name + 0x12 (field 2, items)
+                while idx < data_len - 4:
+                    pos = data.find(b"\x0a", idx)
+                    if pos == -1 or pos >= data_len - 3:
+                        break
+                    str_len = data[pos + 1]
+                    if 1 <= str_len <= 50 and pos + 2 + str_len < data_len:
+                        tag_bytes = data[pos + 2 : pos + 2 + str_len]
+                        if all(32 < b < 127 for b in tag_bytes):
+                            next_byte = data[pos + 2 + str_len]
+                            if next_byte == 0x12:
+                                tags.add(tag_bytes.decode("ascii", errors="ignore").lower())
+                                idx = pos + 2 + str_len
+                                continue
+                    idx = pos + 1
+
+                _cached_geosite_tags = tags
+                _cached_geosite_mtime = mtime
+                return tags
+            except Exception:
+                pass
+    return set()
+
+
+def filter_safe_geosites(geosites: List[str]) -> List[str]:
+    """
+    Filter geosite tags so only tags verified in local geosite.dat (or in standard safe list)
+    are output to Xray. Prevents 'code not found in geosite.dat: <TAG>' crashes.
+    """
+    if not geosites:
+        return []
+
+    installed_tags = get_installed_geosite_tags()
+    safe_result: List[str] = []
+
+    for g in geosites:
+        if not g.startswith("geosite:"):
+            continue
+        tag = g.split(":", 1)[1].strip().lower()
+        if installed_tags:
+            if tag in installed_tags:
+                safe_result.append(f"geosite:{tag}")
+        else:
+            if tag in STANDARD_SAFE_GEOSITES:
+                safe_result.append(f"geosite:{tag}")
+
+    return safe_result
+
+
 # ------------------------------------------------------------------------------
 # Geozone Categories Catalog
 # ------------------------------------------------------------------------------
@@ -24,10 +128,42 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "subtitle": "Яндекс, VK, Mail.ru, Ozon, Wildberries, Авито",
         "group": "domestic",
         "icon": "🇷🇺",
-        "tags": ["geosite:ru", "geosite:yandex", "geosite:mailru", "geosite:vk"],
+        "tags": ["domain:ru", "domain:рф", "domain:su", "yandex", "vk"],
+        "domains": [
+            "domain:ru",
+            "domain:рф",
+            "domain:su",
+            "domain:yandex",
+            "domain:ya.ru",
+            "domain:vk.com",
+            "domain:vk.ru",
+            "domain:vk-cdn.net",
+            "domain:mail.ru",
+            "domain:mirtesen.ru",
+            "domain:dzen.ru",
+            "domain:ok.ru",
+            "domain:rutube.ru",
+            "domain:ozon.ru",
+            "domain:wildberries.ru",
+            "domain:avito.ru",
+            "domain:kinopoisk.ru",
+            "domain:hh.ru",
+            "domain:2gis.ru",
+            "domain:auto.ru",
+            "domain:cian.ru",
+            "domain:aliexpress.ru",
+            "domain:habr.com",
+            "domain:pikabu.ru",
+            "domain:rbc.ru",
+            "domain:kommersant.ru",
+            "domain:ria.ru",
+            "domain:tass.ru",
+            "domain:lenta.ru",
+            "domain:rambler.ru",
+        ],
         "geosites": ["geosite:ru", "geosite:yandex", "geosite:mailru", "geosite:vk"],
         "geoips": [],
-        "description": "Сайты национальной доменной зоны .RU, .РФ и крупнейшие российские экосистемы.",
+        "description": "Сайты национальной доменной зоны .RU, .РФ, .SU и крупнейшие российские экосистемы напрямую.",
         "defaults": {"bypass_ru": "direct", "all_vpn": "proxy", "only_blocked": "direct"},
     },
     {
@@ -36,10 +172,35 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "subtitle": "Госуслуги, ФНС, Mos.ru, суды и ведомства",
         "group": "domestic",
         "icon": "🏛️",
-        "tags": ["geosite:category-gov-ru"],
+        "tags": ["domain:gov.ru", "domain:gosuslugi.ru", "domain:mos.ru"],
+        "domains": [
+            "domain:gov.ru",
+            "domain:gosuslugi.ru",
+            "domain:gosuslugi.com",
+            "domain:nalog.ru",
+            "domain:nalog.gov.ru",
+            "domain:mos.ru",
+            "domain:spb.ru",
+            "domain:kremlin.ru",
+            "domain:duma.gov.ru",
+            "domain:council.gov.ru",
+            "domain:sudrf.ru",
+            "domain:cbr.ru",
+            "domain:sfr.gov.ru",
+            "domain:pfr.gov.ru",
+            "domain:fss.ru",
+            "domain:zakupki.gov.ru",
+            "domain:rosreestr.gov.ru",
+            "domain:gibdd.ru",
+            "domain:fsb.ru",
+            "domain:customs.gov.ru",
+            "domain:mvd.gov.ru",
+            "domain:mil.ru",
+            "domain:eais.rkn.gov.ru",
+        ],
         "geosites": ["geosite:category-gov-ru"],
         "geoips": [],
-        "description": "Порталы государственных услуг, налоговая служба, судебные и муниципальные ресурсы.",
+        "description": "Порталы государственных услуг, налоговая служба, судебные и муниципальные ресурсы напрямую.",
         "defaults": {"bypass_ru": "direct", "all_vpn": "proxy", "only_blocked": "direct"},
     },
     {
@@ -48,10 +209,33 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "subtitle": "Сбер, Т-Банк, ВТБ, Альфа, НСПК Мир",
         "group": "domestic",
         "icon": "💳",
-        "tags": ["geosite:category-bank-ru", "geosite:sberbank", "geosite:tinkoff"],
+        "tags": ["domain:sberbank.ru", "domain:tinkoff.ru", "domain:vtb.ru"],
+        "domains": [
+            "domain:sberbank.ru",
+            "domain:sberbank.com",
+            "domain:sber.ru",
+            "domain:tinkoff.ru",
+            "domain:tbank.ru",
+            "domain:vtb.ru",
+            "domain:vtb24.ru",
+            "domain:alfabank.ru",
+            "domain:alfa-bank.ru",
+            "domain:gazprombank.ru",
+            "domain:raiffeisen.ru",
+            "domain:open.ru",
+            "domain:sovcombank.ru",
+            "domain:psbank.ru",
+            "domain:rosbank.ru",
+            "domain:rshb.ru",
+            "domain:pochtabank.ru",
+            "domain:mkb.ru",
+            "domain:nspk.ru",
+            "domain:mir-pay.ru",
+            "domain:sbp.nspk.ru",
+        ],
         "geosites": ["geosite:category-bank-ru", "geosite:sberbank", "geosite:tinkoff"],
         "geoips": [],
-        "description": "Российские банковские приложения, интернет-банкинг и платежные шлюзы.",
+        "description": "Российские банковские приложения, интернет-банкинг и платежные шлюзы без разрывов.",
         "defaults": {"bypass_ru": "direct", "all_vpn": "proxy", "only_blocked": "direct"},
     },
     {
@@ -61,9 +245,10 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "group": "domestic",
         "icon": "📍",
         "tags": ["geoip:ru"],
+        "domains": [],
         "geosites": [],
         "geoips": ["geoip:ru"],
-        "description": "Прямое подключение к любым серверам, физически расположенным на территории РФ.",
+        "description": "Прямое подключение ко всем серверам и адресам, физически расположенным на территории РФ.",
         "defaults": {"bypass_ru": "direct", "all_vpn": "proxy", "only_blocked": "direct"},
     },
     {
@@ -72,10 +257,16 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "subtitle": "Ресурсы стран ЕАЭС (.by, .kz)",
         "group": "domestic",
         "icon": "🇧🇾",
-        "tags": ["geosite:by", "geosite:kz", "geoip:by", "geoip:kz"],
+        "tags": ["domain:by", "domain:kz", "geoip:by", "geoip:kz"],
+        "domains": [
+            "domain:by",
+            "domain:бел",
+            "domain:kz",
+            "domain:қаз",
+        ],
         "geosites": ["geosite:by", "geosite:kz"],
         "geoips": ["geoip:by", "geoip:kz"],
-        "description": "Сервисы и IP-диапазоны Беларуси и Казахстана.",
+        "description": "Сервисы, национальные домены и IP-диапазоны Беларуси и Казахстана.",
         "defaults": {"bypass_ru": "direct", "all_vpn": "proxy", "only_blocked": "direct"},
     },
 
@@ -86,10 +277,18 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "subtitle": "ChatGPT, Claude, Perplexity, Midjourney",
         "group": "blocked_media",
         "icon": "🤖",
-        "tags": ["geosite:openai", "geosite:anthropic"],
+        "tags": ["geosite:openai", "geosite:anthropic", "domain:chatgpt.com"],
+        "domains": [
+            "domain:openai.com",
+            "domain:chatgpt.com",
+            "domain:anthropic.com",
+            "domain:claude.ai",
+            "domain:perplexity.ai",
+            "domain:midjourney.com",
+        ],
         "geosites": ["geosite:openai", "geosite:anthropic"],
         "geoips": [],
-        "description": "Нейросети и генеративные платформы (OpenAI, Anthropic Claude).",
+        "description": "Нейросети и генеративные платформы (OpenAI, Anthropic Claude, Perplexity).",
         "defaults": {"bypass_ru": "proxy", "all_vpn": "proxy", "only_blocked": "proxy"},
     },
     {
@@ -99,6 +298,16 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "group": "blocked_media",
         "icon": "📸",
         "tags": ["geosite:instagram", "geosite:facebook", "geosite:twitter"],
+        "domains": [
+            "domain:instagram.com",
+            "domain:cdninstagram.com",
+            "domain:facebook.com",
+            "domain:fbcdn.net",
+            "domain:twitter.com",
+            "domain:x.com",
+            "domain:twimg.com",
+            "domain:threads.net",
+        ],
         "geosites": ["geosite:instagram", "geosite:facebook", "geosite:twitter"],
         "geoips": [],
         "description": "Заблокированные зарубежные социальные платформы и медиа-сервисы.",
@@ -111,9 +320,17 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "group": "blocked_media",
         "icon": "📺",
         "tags": ["geosite:youtube", "geosite:netflix", "geosite:twitch", "geosite:spotify"],
+        "domains": [
+            "domain:youtube.com",
+            "domain:googlevideo.com",
+            "domain:ytimg.com",
+            "domain:netflix.com",
+            "domain:twitch.tv",
+            "domain:spotify.com",
+        ],
         "geosites": ["geosite:youtube", "geosite:netflix", "geosite:twitch", "geosite:spotify"],
         "geoips": [],
-        "description": "Видеохостинги и потоковые музыкальные медиа-платформы с высокой скоростью.",
+        "description": "Видеохостинги и потоковые музыкальные медиа-платформы с высокой скоростью через VPN.",
         "defaults": {"bypass_ru": "proxy", "all_vpn": "proxy", "only_blocked": "proxy"},
     },
     {
@@ -123,6 +340,16 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "group": "blocked_media",
         "icon": "💬",
         "tags": ["geosite:discord", "geosite:telegram"],
+        "domains": [
+            "domain:discord.com",
+            "domain:discord.gg",
+            "domain:discordapp.com",
+            "domain:discordapp.net",
+            "domain:telegram.org",
+            "domain:t.me",
+            "domain:telegra.ph",
+            "domain:signal.org",
+        ],
         "geosites": ["geosite:discord", "geosite:telegram"],
         "geoips": [],
         "description": "Голосовые каналы Discord, мультимедийные серверы Telegram и мессенджеры.",
@@ -135,6 +362,14 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "group": "blocked_media",
         "icon": "💻",
         "tags": ["geosite:github", "geosite:docker", "geosite:notion", "geosite:medium"],
+        "domains": [
+            "domain:github.com",
+            "domain:githubusercontent.com",
+            "domain:docker.com",
+            "domain:docker.io",
+            "domain:notion.so",
+            "domain:medium.com",
+        ],
         "geosites": ["geosite:github", "geosite:docker", "geosite:notion", "geosite:medium"],
         "geoips": [],
         "description": "Инструменты разработчиков, репозитории пакетов и платформы документации.",
@@ -146,10 +381,27 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "subtitle": "RuTracker, заблокированные СМИ и энциклопедии",
         "group": "blocked_media",
         "icon": "🔓",
-        "tags": ["geosite:category-anticensorship", "geosite:rutracker"],
+        "tags": ["domain:rutracker.org", "domain:meduza.io", "domain:zona.media"],
+        "domains": [
+            "domain:rutracker.org",
+            "domain:rutracker.net",
+            "domain:rutracker.cc",
+            "domain:nnmclub.to",
+            "domain:kinozal.tv",
+            "domain:flibusta.is",
+            "domain:meduza.io",
+            "domain:zona.media",
+            "domain:theins.ru",
+            "domain:novayagazeta.eu",
+            "domain:rferl.org",
+            "domain:currenttime.tv",
+            "domain:svoboda.org",
+            "domain:dw.com",
+            "domain:bbc.com",
+        ],
         "geosites": ["geosite:category-anticensorship", "geosite:rutracker"],
         "geoips": [],
-        "description": "База сайтов из реестра ограничений доступа и торрент-каталоги.",
+        "description": "База сайтов из реестра ограничений доступа, независимые СМИ и торрент-каталоги.",
         "defaults": {"bypass_ru": "proxy", "all_vpn": "proxy", "only_blocked": "proxy"},
     },
     {
@@ -159,6 +411,15 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "group": "blocked_media",
         "icon": "🌐",
         "tags": ["geosite:google", "geosite:microsoft", "geosite:apple"],
+        "domains": [
+            "domain:google.com",
+            "domain:googleapis.com",
+            "domain:gstatic.com",
+            "domain:microsoft.com",
+            "domain:live.com",
+            "domain:apple.com",
+            "domain:icloud.com",
+        ],
         "geosites": ["geosite:google", "geosite:microsoft", "geosite:apple"],
         "geoips": [],
         "description": "Глобальные сервисы Google, сервисы учетных записей Apple и Microsoft.",
@@ -172,7 +433,13 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "subtitle": "Баннеры, аналитика, рекламные трекеры и телеметрия",
         "group": "security",
         "icon": "🚫",
-        "tags": ["geosite:category-ads-all"],
+        "tags": ["geosite:category-ads-all", "domain:doubleclick.net"],
+        "domains": [
+            "domain:adservice.google.com",
+            "domain:pagead2.googlesyndication.com",
+            "domain:doubleclick.net",
+            "domain:an.yandex.ru",
+        ],
         "geosites": ["geosite:category-ads-all"],
         "geoips": [],
         "description": "Снижает трафик и убирает навязчивую рекламу на всех подключенных устройствах.",
@@ -185,6 +452,7 @@ CATEGORIES_CATALOG: List[Dict[str, Any]] = [
         "group": "security",
         "icon": "🔞",
         "tags": ["geosite:category-porn"],
+        "domains": [],
         "geosites": ["geosite:category-porn"],
         "geoips": [],
         "description": "Фильтрация взрослого контента на уровне шлюза для защиты детских устройств.",
@@ -364,17 +632,19 @@ def build_xray_routing_rules(routing_cfg: Optional[Dict[str, Any]] = None) -> Di
     for item in CATEGORIES_CATALOG:
         cid = item["id"]
         action = cat_actions.get(cid, item["defaults"].get("bypass_ru", "direct"))
-        geos = item.get("geosites", [])
+        explicit_domains = list(item.get("domains", []))
+        safe_geos = filter_safe_geosites(item.get("geosites", []))
+        all_domains = explicit_domains + safe_geos
         gips = item.get("geoips", [])
 
         if action == "direct":
-            direct_domains.extend(geos)
+            direct_domains.extend(all_domains)
             direct_ips.extend(gips)
         elif action == "proxy":
-            proxy_domains.extend(geos)
+            proxy_domains.extend(all_domains)
             proxy_ips.extend(gips)
         elif action == "block":
-            block_domains.extend(geos)
+            block_domains.extend(all_domains)
             block_ips.extend(gips)
 
     rules: List[Dict[str, Any]] = [
