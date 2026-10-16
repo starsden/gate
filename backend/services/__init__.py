@@ -9,7 +9,6 @@ from . import diagnostics
 from . import firewall
 from . import logs
 from . import network
-from . import routing
 from . import setup
 from . import subscription
 from . import system

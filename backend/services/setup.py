@@ -25,7 +25,6 @@ from . import wifi as wifi_service
 from . import vpn as vpn_service
 from . import subscription as subscription_service
 from . import firewall as firewall_service
-from . import routing as routing_service
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 LOCAL_CONFIG_DIR = BASE_DIR / "configs"
@@ -730,15 +729,9 @@ table ip nat {{
             _final_setup_state["logs"].append("[Dev] Сохранена конфигурация nftables.conf.")
         time.sleep(0.4)
 
-        # Task 6: Routing & VPN configuration (82%)
+        # Task 6: VPN tunnel configuration (82%)
         _final_setup_state["progress"] = 82
-        _final_setup_state["current_task"] = "Настройка маршрутов, геозон и профиля VPN..."
-        routing_preset = vpn_cfg.get("routing_preset", "bypass_ru")
-        try:
-            routing_service.apply_routing_preset(routing_preset)
-            _final_setup_state["logs"].append(f"Применен профиль геозон и маршрутизации: {routing_preset}.")
-        except Exception as e:
-            _final_setup_state["logs"].append(f"Предупреждение геозон: {str(e)}")
+        _final_setup_state["current_task"] = "Настройка туннеля и профиля VPN..."
 
         vless_uri = vpn_cfg.get("vless_uri", "").strip()
         if vless_uri:
