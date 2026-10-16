@@ -14,6 +14,7 @@ import platform
 import re
 import socket
 import ssl
+import ipaddress
 import time
 import zlib
 import urllib.error
@@ -264,11 +265,49 @@ def decode_subscription_payload(raw_content: Any) -> List[str]:
     return []
 
 
-def fetch_subscription_from_url(url: str, timeout: float = 12.0) -> str:
-    """Download subscription text from HTTP/HTTPS endpoint with multi-UA and gzip support."""
-    url = url.strip()
-    if not (url.startswith("http://") or url.startswith("https://")):
+MAX_SUBSCRIPTION_BYTES = 5 * 1024 * 1024  # 5 MB max response limit
+
+
+def validate_subscription_url(url: str) -> None:
+    """Validate URL scheme and ensure destination is not a private, loopback, or link-local address (SSRF mitigation)."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
         raise ValueError("Invalid URL scheme: subscription link must start with http:// or https://")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: missing hostname.")
+
+    # Check for direct localhost / loopback identifiers
+    if hostname.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        raise ValueError(f"Subscription URL points to restricted loopback address: {hostname}")
+
+    # Check if hostname is an IP literal
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise ValueError(f"Subscription URL points to restricted internal/private IP address: {ip}")
+    except ValueError:
+        pass
+
+    # Resolve hostname via DNS and check resolved IP addresses
+    try:
+        addr_info = socket.getaddrinfo(hostname, None)
+        for family, _, _, _, sockaddr in addr_info:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                raise ValueError(f"Subscription URL points to restricted internal/private IP address: {ip}")
+    except socket.gaierror as e:
+        # If hostname cannot be resolved in offline/mock test environment, allow if not an internal literal
+        if os.environ.get("ENABLE_MOCKS") == "1" or not os.environ.get("STRICT_DNS_CHECK"):
+            pass
+        else:
+            raise ValueError(f"Cannot resolve subscription hostname '{hostname}': {str(e)}")
+
+
+def fetch_subscription_from_url(url: str, timeout: float = 12.0) -> str:
+    """Download subscription text from HTTP/HTTPS endpoint with SSRF protection and gzip support."""
+    url = url.strip()
+    validate_subscription_url(url)
 
     # Priority list of User-Agents:
     # 1. v2rayNG - standard for Russian telegram VPN bots (PagerVPN, Marzban, Remnawave)
@@ -283,6 +322,14 @@ def fetch_subscription_from_url(url: str, timeout: float = 12.0) -> str:
     last_error = None
     last_text = ""
 
+    # Verified SSL context (using certifi if available)
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(cafile=certifi.where())
+    except Exception:
+        pass
+
     for ua in user_agents:
         headers = {
             "User-Agent": ua,
@@ -293,28 +340,15 @@ def fetch_subscription_from_url(url: str, timeout: float = 12.0) -> str:
         req = urllib.request.Request(url, headers=headers)
 
         content_bytes = None
-        # 1. First attempt: standard verified SSL context (with certifi if available)
         try:
-            ctx = ssl.create_default_context()
-            try:
-                import certifi
-                ctx.load_verify_locations(cafile=certifi.where())
-            except Exception:
-                pass
-
             with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-                content_bytes = resp.read()
-        except (urllib.error.URLError, ssl.SSLError, Exception) as first_err:
-            last_error = first_err
-            # 2. Fallback attempt: unverified SSL context
-            try:
-                unverified_ctx = ssl._create_unverified_context()
-                unverified_req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(unverified_req, timeout=timeout, context=unverified_ctx) as resp:
-                    content_bytes = resp.read()
-            except Exception as e2:
-                last_error = e2
-                continue
+                # Read with size cap to prevent OOM / resource exhaustion attacks
+                content_bytes = resp.read(MAX_SUBSCRIPTION_BYTES + 1)
+                if len(content_bytes) > MAX_SUBSCRIPTION_BYTES:
+                    raise ValueError(f"Subscription response exceeds maximum allowed size ({MAX_SUBSCRIPTION_BYTES // (1024*1024)} MB).")
+        except Exception as err:
+            last_error = err
+            continue
 
         if content_bytes:
             decompressed = decompress_payload(content_bytes)

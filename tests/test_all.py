@@ -225,22 +225,26 @@ def test_subscription_service():
     assert del_res["success"] is True
     assert del_res["remaining_count"] == 1
 
-    # Test SSL certificate verification error fallback
+    # Test SSRF protection blocks loopback/private addresses
+    try:
+        subscription.validate_subscription_url("http://127.0.0.1/sub")
+        assert False, "Should have blocked 127.0.0.1"
+    except ValueError as e:
+        assert "restricted" in str(e).lower()
+
+    # Test verified SSL context enforcement (no insecure CERT_NONE fallback)
     from unittest.mock import patch, MagicMock
     import ssl, urllib.error
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = multiline.encode("utf-8")
-    mock_resp.__enter__.return_value = mock_resp
     ssl_err = urllib.error.URLError(ssl.SSLCertVerificationError("certificate verify failed: unable to get local issuer certificate"))
 
-    with patch("urllib.request.urlopen", side_effect=[ssl_err, mock_resp]) as mock_urlopen:
-        fetched = subscription.fetch_subscription_from_url("https://vpn-provider.com/sub/token")
-        assert len(fetched) > 0
-        assert mock_urlopen.call_count == 2
-        # Ensure second attempt bypassed certificate checks
-        ctx = mock_urlopen.call_args_list[1][1]["context"]
-        assert ctx.check_hostname is False
-        assert ctx.verify_mode == ssl.CERT_NONE
+    with patch("urllib.request.urlopen", side_effect=ssl_err) as mock_urlopen:
+        try:
+            subscription.fetch_subscription_from_url("https://vpn-provider.com/sub/token")
+            assert False, "Should have rejected unverified SSL certificate"
+        except Exception:
+            ctx = mock_urlopen.call_args_list[0][1]["context"]
+            assert ctx.check_hostname is True
+            assert ctx.verify_mode == ssl.CERT_REQUIRED
 
     print("      -> Subscription decoder, parser, SSL fallback, and state persistence OK")
 
@@ -400,67 +404,76 @@ async def test_fastapi_endpoints():
     assert "VPN Gateway" in r["text"]
     print("      -> [200] GET / (Vanilla HTML5 UI)")
 
-    # Overview Status
-    r = await asgi_request(app, "GET", "/api/status")
+    # Verify unauthenticated request is rejected with 401
+    r_unauth = await asgi_request(app, "GET", "/api/status")
+    assert r_unauth["status"] == 401, f"Expected 401 for unauthenticated /api/status, got {r_unauth['status']}"
+    print("      -> [401] GET /api/status (Unauthorized properly rejected)")
+
+    # Create admin session for authorized tests
+    test_token = auth.create_session("admin")
+    auth_headers = {"Cookie": f"session_token={test_token}"}
+
+    # Overview Status (Authenticated)
+    r = await asgi_request(app, "GET", "/api/status", headers=auth_headers)
     assert r["status"] == 200
     assert "vpn" in r["json"]
     assert "system" in r["json"]
     print("      -> [200] GET /api/status")
 
     # System Status & Hardware
-    r = await asgi_request(app, "GET", "/api/system")
+    r = await asgi_request(app, "GET", "/api/system", headers=auth_headers)
     assert r["status"] == 200
     assert "resources" in r["json"]
     print("      -> [200] GET /api/system")
 
     # Wi-Fi State
-    r = await asgi_request(app, "GET", "/api/wifi")
+    r = await asgi_request(app, "GET", "/api/wifi", headers=auth_headers)
     assert r["status"] == 200
     assert "ssid" in r["json"]
     print("      -> [200] GET /api/wifi")
 
     # Wi-Fi Clients
-    r = await asgi_request(app, "GET", "/api/clients")
+    r = await asgi_request(app, "GET", "/api/clients", headers=auth_headers)
     assert r["status"] == 200
     assert "clients" in r["json"]
     print("      -> [200] GET /api/clients")
 
     # VPN Status
-    r = await asgi_request(app, "GET", "/api/vpn")
+    r = await asgi_request(app, "GET", "/api/vpn", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] GET /api/vpn")
 
     # Network & Routing
-    r = await asgi_request(app, "GET", "/api/network")
+    r = await asgi_request(app, "GET", "/api/network", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] GET /api/network")
 
     # Diagnostics
-    r = await asgi_request(app, "GET", "/api/diagnostics")
+    r = await asgi_request(app, "GET", "/api/diagnostics", headers=auth_headers)
     assert r["status"] == 200
     assert "checks" in r["json"]
     print("      -> [200] GET /api/diagnostics")
 
     # Auth Status
-    r = await asgi_request(app, "GET", "/api/auth/status")
+    r = await asgi_request(app, "GET", "/api/auth/status", headers=auth_headers)
     assert r["status"] == 200
     assert "first_run" in r["json"]
     print("      -> [200] GET /api/auth/status")
 
     # Backups List
-    r = await asgi_request(app, "GET", "/api/backups")
+    r = await asgi_request(app, "GET", "/api/backups", headers=auth_headers)
     assert r["status"] == 200
     assert "backups" in r["json"]
     print("      -> [200] GET /api/backups")
 
     # Service Logs
-    r = await asgi_request(app, "GET", "/api/logs/vpn-gateway?lines=10")
+    r = await asgi_request(app, "GET", "/api/logs/vpn-gateway?lines=10", headers=auth_headers)
     assert r["status"] == 200
     assert "logs" in r["json"]
     print("      -> [200] GET /api/logs/vpn-gateway")
 
     # Subscription Endpoints
-    r = await asgi_request(app, "GET", "/api/vpn/subscription")
+    r = await asgi_request(app, "GET", "/api/vpn/subscription", headers=auth_headers)
     assert r["status"] == 200
     assert "servers" in r["json"]
     print("      -> [200] GET /api/vpn/subscription")
@@ -474,27 +487,27 @@ async def test_fastapi_endpoints():
             "&sid=9999&type=tcp#Fast-US"
         )
     }
-    r = await asgi_request(app, "POST", "/api/vpn/subscription/import", body=sub_payload)
+    r = await asgi_request(app, "POST", "/api/vpn/subscription/import", headers=auth_headers, body=sub_payload)
     assert r["status"] == 200
     assert r["json"]["success"] is True
     assert r["json"]["count"] >= 1
     new_server_id = r["json"]["active_server_id"]
     print("      -> [200] POST /api/vpn/subscription/import")
 
-    r = await asgi_request(app, "POST", "/api/vpn/subscription/select", body={"server_id": new_server_id})
+    r = await asgi_request(app, "POST", "/api/vpn/subscription/select", headers=auth_headers, body={"server_id": new_server_id})
     assert r["status"] == 200
     assert r["json"]["success"] is True
     print("      -> [200] POST /api/vpn/subscription/select")
 
     # Geozones Routing API Endpoints
-    r = await asgi_request(app, "GET", "/api/vpn/routing")
+    r = await asgi_request(app, "GET", "/api/vpn/routing", headers=auth_headers)
     assert r["status"] == 200
     assert r["json"]["success"] is True
     assert "categories" in r["json"]
     assert "presets" in r["json"]
     print("      -> [200] GET /api/vpn/routing")
 
-    r = await asgi_request(app, "POST", "/api/vpn/routing/preset", body={"preset": "bypass_ru"})
+    r = await asgi_request(app, "POST", "/api/vpn/routing/preset", headers=auth_headers, body={"preset": "bypass_ru"})
     assert r["status"] == 200
     assert r["json"]["success"] is True
     print("      -> [200] POST /api/vpn/routing/preset")
@@ -512,7 +525,7 @@ async def test_fastapi_endpoints():
             "adblock": "block",
         },
     }
-    r = await asgi_request(app, "POST", "/api/vpn/routing", body=custom_body)
+    r = await asgi_request(app, "POST", "/api/vpn/routing", headers=auth_headers, body=custom_body)
     assert r["status"] == 200
     assert r["json"]["success"] is True
     print("      -> [200] POST /api/vpn/routing")
@@ -527,39 +540,39 @@ async def test_fastapi_endpoints():
     assert "packages" in r["json"]
     print("      -> [200] GET /api/setup/packages/check")
 
-    r = await asgi_request(app, "POST", "/api/setup/packages/install")
+    r = await asgi_request(app, "POST", "/api/setup/packages/install", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] POST /api/setup/packages/install")
 
-    r = await asgi_request(app, "GET", "/api/setup/packages/progress")
+    r = await asgi_request(app, "GET", "/api/setup/packages/progress", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] GET /api/setup/packages/progress")
 
-    r = await asgi_request(app, "GET", "/api/setup/wifi")
+    r = await asgi_request(app, "GET", "/api/setup/wifi", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] GET /api/setup/wifi")
 
-    r = await asgi_request(app, "POST", "/api/setup/wifi", body={"ssid": "testwifi", "password": "testpassword123", "channel": 6, "country": "RU"})
+    r = await asgi_request(app, "POST", "/api/setup/wifi", headers=auth_headers, body={"ssid": "testwifi", "password": "testpassword123", "channel": 6, "country": "RU"})
     assert r["status"] == 200
     print("      -> [200] POST /api/setup/wifi")
 
-    r = await asgi_request(app, "GET", "/api/setup/vpn")
+    r = await asgi_request(app, "GET", "/api/setup/vpn", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] GET /api/setup/vpn")
 
-    r = await asgi_request(app, "POST", "/api/setup/vpn", body={"vless_uri": "", "skip": True})
+    r = await asgi_request(app, "POST", "/api/setup/vpn", headers=auth_headers, body={"vless_uri": "", "skip": True})
     assert r["status"] == 200
     print("      -> [200] POST /api/setup/vpn")
 
-    r = await asgi_request(app, "POST", "/api/setup/account", body={"username": "admin", "password": "adminpassword123", "confirm_password": "adminpassword123"})
+    r = await asgi_request(app, "POST", "/api/setup/account", headers=auth_headers, body={"username": "admin", "password": "adminpassword123", "confirm_password": "adminpassword123"})
     assert r["status"] == 200
     print("      -> [200] POST /api/setup/account")
 
-    r = await asgi_request(app, "POST", "/api/setup/finalize")
+    r = await asgi_request(app, "POST", "/api/setup/finalize", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] POST /api/setup/finalize")
 
-    r = await asgi_request(app, "GET", "/api/setup/finalize/progress")
+    r = await asgi_request(app, "GET", "/api/setup/finalize/progress", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] GET /api/setup/finalize/progress")
 

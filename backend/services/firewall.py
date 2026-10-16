@@ -72,8 +72,20 @@ def get_firewall_status() -> Dict[str, Any]:
     }
 
 
+def _sanitize_iface_name(iface: str) -> str:
+    """Ensure network interface name contains only safe alphanumeric characters."""
+    clean = (iface or "").strip()
+    if not re.match(r"^[a-zA-Z0-9_.\-]+$", clean):
+        raise ValueError(f"Invalid interface name: {iface}")
+    return clean
+
+
 def generate_nftables_ruleset(wan_iface: str = "enp3s0", lan_iface: str = "wlp4s0", tun_iface: str = "xray0") -> str:
-    """Generate production nftables ruleset for Gateway."""
+    """Generate production nftables ruleset with default DROP on input."""
+    wan = _sanitize_iface_name(wan_iface)
+    lan = _sanitize_iface_name(lan_iface)
+    tun = _sanitize_iface_name(tun_iface)
+
     return f"""#!/usr/sbin/nft -f
 # /etc/nftables.conf
 # Managed by Linux VPN Gateway
@@ -82,24 +94,29 @@ flush ruleset
 
 table inet filter {{
     chain input {{
-        type filter hook input priority filter; policy accept;
+        type filter hook input priority filter; policy drop;
         iifname "lo" accept
         ct state established,related accept
-        
-        # Allow DHCP, DNS, and Web UI on Wi-Fi LAN
-        iifname "{lan_iface}" udp dport {{ 53, 67 }} accept
-        iifname "{lan_iface}" tcp dport {{ 53, 80 }} accept
+        ct state invalid drop
+
+        # ICMP echo requests with rate limit
+        ip protocol icmp icmp type {{ echo-request }} limit rate 5/second accept
+        ip6 nexthdr icmpv6 icmpv6 type {{ echo-request, nd-neighbor-solicit, nd-neighbor-advert, nd-router-advert }} accept
+
+        # Allow DHCP, DNS, and Web UI strictly on Wi-Fi LAN interface
+        iifname "{lan}" udp dport {{ 53, 67 }} accept
+        iifname "{lan}" tcp dport {{ 53, 80 }} accept
     }}
 
     chain forward {{
         type filter hook forward priority filter; policy accept;
         ct state established,related accept
-        
+
         # Forward Wi-Fi client traffic to Xray TUN
-        iifname "{lan_iface}" oifname "{tun_iface}" accept
-        
+        iifname "{lan}" oifname "{tun}" accept
+
         # Fallback forward to WAN Ethernet
-        iifname "{lan_iface}" oifname "{wan_iface}" accept
+        iifname "{lan}" oifname "{wan}" accept
     }}
 
     chain output {{
@@ -110,12 +127,12 @@ table inet filter {{
 table ip nat {{
     chain postrouting {{
         type nat hook postrouting priority srcnat; policy accept;
-        
+
         # Masquerade traffic going to Xray TUN
-        oifname "{tun_iface}" masquerade
-        
+        oifname "{tun}" masquerade
+
         # Masquerade traffic going direct to WAN
-        oifname "{wan_iface}" masquerade
+        oifname "{wan}" masquerade
     }}
 }}
 """
@@ -125,7 +142,11 @@ def apply_firewall_ruleset(wan_iface: str, lan_iface: str, tun_iface: str = "xra
     """
     Validate and apply nftables ruleset with backup and rollback.
     """
-    new_rules = generate_nftables_ruleset(wan_iface, lan_iface, tun_iface)
+    try:
+        new_rules = generate_nftables_ruleset(wan_iface, lan_iface, tun_iface)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+
     nft_bin = get_nft_binary()
 
     if not _is_linux() or not nft_bin:
@@ -157,14 +178,15 @@ def apply_firewall_ruleset(wan_iface: str, lan_iface: str, tun_iface: str = "xra
             backup_file = BACKUP_DIR / f"nftables.conf.{timestamp}.bak"
             shutil.copy2(target_file, backup_file)
 
-        # Syntax test using temporary file
-        temp_file = Path("/tmp/nft_test.conf")
+        # Syntax test using safe temporary file in target directory (avoids /tmp symlink race and cross-fs replace)
+        temp_file = target_file.with_suffix(".tmp")
         with open(temp_file, "w") as f:
             f.write(new_rules)
 
         test_res = subprocess.run([nft_bin, "-c", "-f", str(temp_file)], capture_output=True, text=True, timeout=5)
         if test_res.returncode != 0:
-            if temp_file.exists(): temp_file.unlink()
+            if temp_file.exists():
+                temp_file.unlink()
             return {"success": False, "error": f"nftables syntax check failed: {test_res.stderr.strip()}"}
 
         # Apply atomically

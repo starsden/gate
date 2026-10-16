@@ -206,19 +206,24 @@ def get_wifi_status() -> Dict[str, Any]:
 
 
 def generate_hostapd_content(iface: str, ssid: str, password: str, channel: int, country: str, ieee80211n: bool) -> str:
-    """Generate production-ready hostapd.conf text."""
+    """Generate production-ready hostapd.conf text with strict input sanitization."""
+    if any(c in "\r\n\x00" for c in ssid) or any(c in "\r\n\x00" for c in password):
+        raise ValueError("SSID and password must not contain newlines or null bytes.")
+
+    clean_iface = re.sub(r"[^a-zA-Z0-9_.\-]", "", iface)
+    clean_country = re.sub(r"[^A-Z]", "", country.upper())[:2] or "RU"
     chan_str = str(channel) if channel > 0 else "0"
     ht_cap = "[HT20]" if ieee80211n else ""
 
     lines = [
         "# /etc/hostapd/hostapd.conf",
         "# Generated automatically by VPN Gateway",
-        f"interface={iface}",
+        f"interface={clean_iface}",
         "driver=nl80211",
         f"ssid={ssid}",
         "hw_mode=g",
         f"channel={chan_str}",
-        f"country_code={country}",
+        f"country_code={clean_country}",
         "ieee80211d=1",
         f"ieee80211n={1 if ieee80211n else 0}",
         "wmm_enabled=1",
@@ -252,12 +257,15 @@ def apply_wifi_config(payload: Dict[str, Any]) -> Dict[str, Any]:
     country = str(payload.get("country", "RU")).strip().upper()[:2]
     ieee80211n = bool(payload.get("ieee80211n", True))
 
-    # 1. Validation
-    if not ssid or len(ssid) > 32:
-        return {"success": False, "error": "SSID must be between 1 and 32 characters."}
+    # 1. Validation against CRLF / Null bytes injection
+    if any(c in "\r\n\x00" for c in ssid) or any(c in "\r\n\x00" for c in password):
+        return {"success": False, "error": "SSID и пароль не должны содержать символы переноса строк или нулевые байты."}
 
-    if len(password) < 8 or len(password) > 63:
-        return {"success": False, "error": "WPA2 Password must be between 8 and 63 characters."}
+    if not ssid or len(ssid.encode("utf-8")) > 32:
+        return {"success": False, "error": "SSID must be between 1 and 32 bytes."}
+
+    if len(password) < 8 or len(password) > 63 or not re.match(r"^[\x20-\x7e]+$", password):
+        return {"success": False, "error": "WPA2 Password must be between 8 and 63 printable ASCII characters."}
 
     if channel not in [0] + get_supported_channels():
         return {"success": False, "error": f"Invalid channel {channel}. Must be 0 (Auto) or 1..13."}

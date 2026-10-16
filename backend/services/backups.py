@@ -45,7 +45,7 @@ def get_target_config_paths() -> Dict[str, Path]:
     return {
         "vpn_state": cfg_dir / "vpn_state.json",
         "wifi_state": cfg_dir / "wifi_state.json",
-        "auth": cfg_dir / "auth.json",
+        # "auth" is intentionally excluded to prevent credential leakage and hijacking
         "hostapd": Path("/etc/hostapd/hostapd.conf") if is_linux else LOCAL_CONFIG_DIR / "hostapd.conf",
         "dnsmasq": Path("/etc/dnsmasq.conf") if is_linux else LOCAL_CONFIG_DIR / "dnsmasq.conf",
         "nftables": Path("/etc/nftables.conf") if is_linux else LOCAL_CONFIG_DIR / "nftables.conf",

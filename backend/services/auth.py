@@ -13,7 +13,7 @@ import platform
 import secrets
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 LOCAL_CONFIG_DIR = BASE_DIR / "configs"
@@ -96,6 +96,36 @@ def save_auth_record(record: Dict[str, Any]) -> None:
         pass
 
 
+# Rate limiting state for brute-force protection
+_failed_attempts: List[float] = []
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_SECONDS = 60
+
+
+def _is_rate_limited() -> Tuple[bool, int]:
+    """Check if login attempts are currently throttled."""
+    global _failed_attempts
+    now = time.time()
+    # Filter attempts within lockout window
+    _failed_attempts = [t for t in _failed_attempts if now - t < LOCKOUT_SECONDS]
+    if len(_failed_attempts) >= MAX_FAILED_ATTEMPTS:
+        retry_after = int(LOCKOUT_SECONDS - (now - _failed_attempts[0]))
+        return True, max(1, retry_after)
+    return False, 0
+
+
+def _record_failed_attempt() -> None:
+    """Record timestamp of failed login attempt."""
+    global _failed_attempts
+    _failed_attempts.append(time.time())
+
+
+def _reset_failed_attempts() -> None:
+    """Clear failed login attempts upon successful login."""
+    global _failed_attempts
+    _failed_attempts.clear()
+
+
 def is_first_run() -> bool:
     """True if no admin password has been established yet."""
     record = load_auth_record()
@@ -106,8 +136,8 @@ def is_first_run() -> bool:
 
 def setup_initial_password(password: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """Set up the master admin password on first run. Returns (success, token, error)."""
-    if len(password) < 6:
-        return False, None, "Password must be at least 6 characters long."
+    if len(password) < 8:
+        return False, None, "Password must be at least 8 characters long."
 
     if not is_first_run():
         return False, None, "Initial setup has already been completed."
@@ -127,14 +157,20 @@ def setup_initial_password(password: str) -> Tuple[bool, Optional[str], Optional
 
 
 def authenticate(password: str) -> Tuple[bool, Optional[str], Optional[str]]:
-    """Verify admin login and issue session token."""
+    """Verify admin login with brute-force rate-limiting and issue session token."""
+    throttled, wait_sec = _is_rate_limited()
+    if throttled:
+        return False, None, f"Too many failed login attempts. Please wait {wait_sec} seconds before trying again."
+
     record = load_auth_record()
     if not record or not record.get("password_hash"):
         return False, None, "Gateway is unconfigured. Please complete initial setup."
 
     if not verify_password(password, record["password_hash"]):
+        _record_failed_attempt()
         return False, None, "Invalid admin password."
 
+    _reset_failed_attempts()
     # Update last login
     record["last_login"] = time.time()
     save_auth_record(record)
@@ -145,8 +181,8 @@ def authenticate(password: str) -> Tuple[bool, Optional[str], Optional[str]]:
 
 def change_password(old_password: str, new_password: str) -> Tuple[bool, Optional[str]]:
     """Change current admin password."""
-    if len(new_password) < 6:
-        return False, "New password must be at least 6 characters long."
+    if len(new_password) < 8:
+        return False, "New password must be at least 8 characters long."
 
     record = load_auth_record()
     if not record or not record.get("password_hash"):

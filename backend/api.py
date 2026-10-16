@@ -6,7 +6,7 @@ Follows clean architecture: endpoints only call service methods.
 import asyncio
 import json
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -38,6 +38,31 @@ def get_current_token(request: Request) -> Optional[str]:
     return None
 
 
+def require_auth(request: Request) -> str:
+    """
+    FastAPI Dependency: enforces valid admin session on protected endpoints.
+    Raises HTTP 401 if token is missing or expired.
+    """
+    token = get_current_token(request)
+    if not token or not auth_service.verify_session(token):
+        raise HTTPException(
+            status_code=401,
+            detail="Требуется аутентификация администратора.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token
+
+
+def require_setup_or_auth(request: Request) -> Optional[str]:
+    """
+    FastAPI Dependency: if initial setup has already been completed,
+    enforces admin authentication to prevent unauthorized reconfiguration.
+    """
+    if setup_service.is_setup_completed():
+        return require_auth(request)
+    return None
+
+
 # Request models
 class ServiceRestartRequest(BaseModel):
     service: str
@@ -47,7 +72,7 @@ class ServiceRestartRequest(BaseModel):
 # REST Endpoints
 # -------------------------------------------------------------
 
-@router.get("/status")
+@router.get("/status", dependencies=[Depends(require_auth)])
 def get_status() -> Dict[str, Any]:
     """Aggregated status overview for Dashboard."""
     sys_summary = system_service.get_dashboard_summary()
@@ -73,13 +98,13 @@ def get_status() -> Dict[str, Any]:
     }
 
 
-@router.get("/system")
+@router.get("/system", dependencies=[Depends(require_auth)])
 def get_system() -> Dict[str, Any]:
     """Comprehensive hardware, OS, resources, and services payload."""
     return system_service.get_full_system_payload()
 
 
-@router.get("/network")
+@router.get("/network", dependencies=[Depends(require_auth)])
 def get_network() -> Dict[str, Any]:
     """WAN, LAN, Table 100 policy routing, and firewall status."""
     return {
@@ -91,7 +116,7 @@ def get_network() -> Dict[str, Any]:
     }
 
 
-@router.post("/network/routes/sync")
+@router.post("/network/routes/sync", dependencies=[Depends(require_auth)])
 def sync_policy_routes() -> Dict[str, Any]:
     """Synchronize Table 100 direct VLESS routes and default xray0 rule."""
     res = network_service.sync_policy_routing()
@@ -100,7 +125,7 @@ def sync_policy_routes() -> Dict[str, Any]:
     return res
 
 
-@router.post("/network/firewall/apply")
+@router.post("/network/firewall/apply", dependencies=[Depends(require_auth)])
 def apply_firewall() -> Dict[str, Any]:
     """Regenerate and reload nftables ruleset."""
     ifaces = network_service.get_default_interfaces()
@@ -110,19 +135,19 @@ def apply_firewall() -> Dict[str, Any]:
     return res
 
 
-@router.get("/wifi")
+@router.get("/wifi", dependencies=[Depends(require_auth)])
 def get_wifi() -> Dict[str, Any]:
     """Wi-Fi Access Point parameters and operational state."""
     return wifi_service.get_wifi_status()
 
 
-@router.get("/vpn")
+@router.get("/vpn", dependencies=[Depends(require_auth)])
 def get_vpn() -> Dict[str, Any]:
     """Xray VLESS/REALITY details and stats."""
     return vpn_service.get_vpn_status()
 
 
-@router.get("/clients")
+@router.get("/clients", dependencies=[Depends(require_auth)])
 def get_clients() -> Dict[str, Any]:
     """Connected Wi-Fi / LAN clients."""
     devices = clients_service.get_connected_clients()
@@ -131,8 +156,7 @@ def get_clients() -> Dict[str, Any]:
         "clients": devices,
     }
 
-
-@router.post("/system/services/{service_name}/restart")
+@router.post("/system/services/{service_name}/restart", dependencies=[Depends(require_auth)])
 def restart_system_service(service_name: str) -> Dict[str, Any]:
     """Safely restart an allowed system service."""
     res = system_service.restart_service(service_name)
@@ -141,7 +165,7 @@ def restart_system_service(service_name: str) -> Dict[str, Any]:
     return res
 
 
-@router.get("/logs/{service}")
+@router.get("/logs/{service}", dependencies=[Depends(require_auth)])
 def get_service_logs(service: str, lines: int = Query(default=100, ge=10, le=500)) -> Dict[str, Any]:
     """Retrieve journalctl logs for a service."""
     log_lines = logs_service.get_logs(service, lines)
@@ -156,7 +180,7 @@ def get_service_logs(service: str, lines: int = Query(default=100, ge=10, le=500
 # Placeholders for Subsequent Phases (clean service contracts)
 # -------------------------------------------------------------
 
-@router.post("/vpn/restart")
+@router.post("/vpn/restart", dependencies=[Depends(require_auth)])
 def restart_vpn() -> Dict[str, Any]:
     res = vpn_service.set_vpn_state("restart")
     if not res.get("success"):
@@ -164,7 +188,7 @@ def restart_vpn() -> Dict[str, Any]:
     return res
 
 
-@router.post("/vpn/connect")
+@router.post("/vpn/connect", dependencies=[Depends(require_auth)])
 def connect_vpn() -> Dict[str, Any]:
     res = vpn_service.set_vpn_state("start")
     if not res.get("success"):
@@ -172,7 +196,7 @@ def connect_vpn() -> Dict[str, Any]:
     return res
 
 
-@router.post("/vpn/disconnect")
+@router.post("/vpn/disconnect", dependencies=[Depends(require_auth)])
 def disconnect_vpn() -> Dict[str, Any]:
     res = vpn_service.set_vpn_state("stop")
     if not res.get("success"):
@@ -180,12 +204,12 @@ def disconnect_vpn() -> Dict[str, Any]:
     return res
 
 
-@router.post("/vpn/test")
+@router.post("/vpn/test", dependencies=[Depends(require_auth)])
 def test_vpn() -> Dict[str, Any]:
     return vpn_service.test_vpn_connection()
 
 
-@router.post("/vpn/parse")
+@router.post("/vpn/parse", dependencies=[Depends(require_auth)])
 def parse_vless(payload: Dict[str, str]) -> Dict[str, Any]:
     uri = payload.get("vless_uri", "").strip()
     if not uri:
@@ -210,7 +234,7 @@ def parse_vless(payload: Dict[str, str]) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"Failed to parse VLESS URI: {str(e)}")
 
 
-@router.post("/vpn/import")
+@router.post("/vpn/import", dependencies=[Depends(require_auth)])
 def import_vless(payload: Dict[str, str]) -> Dict[str, Any]:
     uri = payload.get("vless_uri", "").strip()
     if not uri:
@@ -237,13 +261,13 @@ def import_vless(payload: Dict[str, str]) -> Dict[str, Any]:
 # Geozones & Routing Configuration Endpoints (Geosite / GeoIP)
 # -------------------------------------------------------------
 
-@router.get("/vpn/routing")
+@router.get("/vpn/routing", dependencies=[Depends(require_auth)])
 def get_vpn_routing() -> Dict[str, Any]:
     """Retrieve geozones, routing rules, presets, and domain strategy."""
     return routing_service.get_routing_status()
 
 
-@router.post("/vpn/routing")
+@router.post("/vpn/routing", dependencies=[Depends(require_auth)])
 def update_vpn_routing(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Save geozones routing rules and reload Xray daemon."""
     mode = payload.get("mode", "custom")
@@ -272,7 +296,7 @@ def update_vpn_routing(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-@router.post("/vpn/routing/preset")
+@router.post("/vpn/routing/preset", dependencies=[Depends(require_auth)])
 def apply_routing_preset_endpoint(payload: Dict[str, str]) -> Dict[str, Any]:
     """Apply a predefined routing profile (bypass_ru, all_vpn, only_blocked)."""
     preset_id = payload.get("preset", "").strip()
@@ -291,17 +315,18 @@ def apply_routing_preset_endpoint(payload: Dict[str, str]) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+
 # -------------------------------------------------------------
 # VLESS Subscription Endpoints
 # -------------------------------------------------------------
 
-@router.get("/vpn/subscription")
+@router.get("/vpn/subscription", dependencies=[Depends(require_auth)])
 def get_subscription() -> Dict[str, Any]:
     """Retrieve saved subscription state and list of servers."""
     return subscription_service.load_subscription_data()
 
 
-@router.post("/vpn/subscription/import")
+@router.post("/vpn/subscription/import", dependencies=[Depends(require_auth)])
 def import_subscription(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Import subscription from URL, raw Base64, or multiline links."""
     source = (payload.get("source") or payload.get("url") or payload.get("vless_uri") or "").strip()
@@ -313,7 +338,7 @@ def import_subscription(payload: Dict[str, Any]) -> Dict[str, Any]:
     return res
 
 
-@router.post("/vpn/subscription/refresh")
+@router.post("/vpn/subscription/refresh", dependencies=[Depends(require_auth)])
 def refresh_subscription() -> Dict[str, Any]:
     """Refresh servers from the active subscription URL."""
     res = subscription_service.refresh_subscription()
@@ -322,7 +347,7 @@ def refresh_subscription() -> Dict[str, Any]:
     return res
 
 
-@router.post("/vpn/subscription/select")
+@router.post("/vpn/subscription/select", dependencies=[Depends(require_auth)])
 def select_subscription_server(payload: Dict[str, str]) -> Dict[str, Any]:
     """Activate a specific server ID from the subscription."""
     server_id = payload.get("server_id", "").strip()
@@ -334,7 +359,7 @@ def select_subscription_server(payload: Dict[str, str]) -> Dict[str, Any]:
     return res
 
 
-@router.post("/vpn/subscription/ping")
+@router.post("/vpn/subscription/ping", dependencies=[Depends(require_auth)])
 def ping_subscription_servers(payload: Dict[str, Any] = None) -> Dict[str, Any]:
     """Probe latency for one or all servers in subscription."""
     target_id = (payload or {}).get("server_id", "all")
@@ -344,7 +369,7 @@ def ping_subscription_servers(payload: Dict[str, Any] = None) -> Dict[str, Any]:
     return res
 
 
-@router.delete("/vpn/subscription/servers/{server_id}")
+@router.delete("/vpn/subscription/servers/{server_id}", dependencies=[Depends(require_auth)])
 def delete_subscription_server(server_id: str) -> Dict[str, Any]:
     """Remove a server from the subscription list."""
     res = subscription_service.delete_subscription_server(server_id)
@@ -353,7 +378,7 @@ def delete_subscription_server(server_id: str) -> Dict[str, Any]:
     return res
 
 
-@router.post("/wifi/apply")
+@router.post("/wifi/apply", dependencies=[Depends(require_auth)])
 def apply_wifi(payload: Dict[str, Any]) -> Dict[str, Any]:
     res = wifi_service.apply_wifi_config(payload)
     if not res.get("success"):
@@ -361,7 +386,7 @@ def apply_wifi(payload: Dict[str, Any]) -> Dict[str, Any]:
     return res
 
 
-@router.post("/network/apply")
+@router.post("/network/apply", dependencies=[Depends(require_auth)])
 def apply_network(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "success": True,
@@ -369,13 +394,13 @@ def apply_network(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-@router.get("/diagnostics")
+@router.get("/diagnostics", dependencies=[Depends(require_auth)])
 def get_diagnostics() -> Dict[str, Any]:
     """Run full diagnostic checklist and report system health."""
     return diagnostics_service.run_diagnostics()
 
 
-@router.post("/repair")
+@router.post("/repair", dependencies=[Depends(require_auth)])
 def run_auto_repair() -> Dict[str, Any]:
     """Execute automatic self-healing repair pipeline."""
     res = diagnostics_service.execute_auto_repair()
@@ -386,15 +411,25 @@ def run_auto_repair() -> Dict[str, Any]:
 
 # -------------------------------------------------------------
 # Setup Wizard Endpoints (Multi-step Onboarding)
+# These are intentionally unauthenticated — setup runs before credentials exist.
+# Sensitive fields (password) are stripped from responses.
 # -------------------------------------------------------------
 
 @router.get("/setup/status")
 def get_setup_wizard_status() -> Dict[str, Any]:
-    """Retrieve setup wizard progress, step, and flags."""
+    """Retrieve setup wizard progress, step, and flags (credentials stripped)."""
     state = setup_service.load_setup_state()
+    # Deep-copy and remove any plaintext credentials before returning
+    import copy
+    sanitized = copy.deepcopy(state)
+    if isinstance(sanitized.get("account"), dict):
+        sanitized["account"].pop("password", None)
+        sanitized["account"].pop("confirm_password", None)
+    if isinstance(sanitized.get("wifi"), dict):
+        sanitized["wifi"].pop("password", None)
     return {
         "completed": setup_service.is_setup_completed(),
-        "state": state,
+        "state": sanitized,
     }
 
 
@@ -404,7 +439,7 @@ def check_packages_endpoint() -> Dict[str, Any]:
     return setup_service.check_system_packages()
 
 
-@router.post("/setup/packages/install")
+@router.post("/setup/packages/install", dependencies=[Depends(require_setup_or_auth)])
 def install_packages_endpoint() -> Dict[str, Any]:
     """Trigger background installation of missing packages."""
     return setup_service.start_package_installation()
@@ -434,13 +469,13 @@ async def stream_packages_progress():
     )
 
 
-@router.get("/setup/wifi")
+@router.get("/setup/wifi", dependencies=[Depends(require_setup_or_auth)])
 def get_setup_wifi_endpoint() -> Dict[str, Any]:
     """Retrieve hardware detection and staged Wi-Fi parameters."""
     return setup_service.get_wifi_stage_data()
 
 
-@router.post("/setup/wifi")
+@router.post("/setup/wifi", dependencies=[Depends(require_setup_or_auth)])
 def save_setup_wifi_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Save Wi-Fi parameters for initial configuration."""
     success, err = setup_service.save_wifi_stage_data(payload)
@@ -449,13 +484,13 @@ def save_setup_wifi_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"success": True, "message": "Wi-Fi parameters saved"}
 
 
-@router.get("/setup/vpn")
+@router.get("/setup/vpn", dependencies=[Depends(require_setup_or_auth)])
 def get_setup_vpn_endpoint() -> Dict[str, Any]:
     """Retrieve staged VPN parameters."""
     return setup_service.get_vpn_stage_data()
 
 
-@router.post("/setup/vpn")
+@router.post("/setup/vpn", dependencies=[Depends(require_setup_or_auth)])
 def save_setup_vpn_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Save initial VPN parameters (or skip)."""
     success, err = setup_service.save_vpn_stage_data(payload)
@@ -464,7 +499,7 @@ def save_setup_vpn_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"success": True, "message": "VPN configuration saved"}
 
 
-@router.post("/setup/account")
+@router.post("/setup/account", dependencies=[Depends(require_setup_or_auth)])
 def save_setup_account_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Save dashboard administrator credentials."""
     success, err = setup_service.save_account_stage_data(payload)
@@ -473,7 +508,7 @@ def save_setup_account_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"success": True, "message": "Admin credentials staged"}
 
 
-@router.post("/setup/finalize")
+@router.post("/setup/finalize", dependencies=[Depends(require_setup_or_auth)])
 def finalize_setup_endpoint() -> Dict[str, Any]:
     """Execute final system configuration tasks in background."""
     return setup_service.start_final_setup()
@@ -527,22 +562,32 @@ def auth_status(request: Request) -> Dict[str, Any]:
 
 @router.post("/auth/setup")
 def auth_setup(payload: Dict[str, str], response: Response) -> Dict[str, Any]:
-    pwd = payload.get("password", "").strip()
+    pwd = payload.get("password", "")
     success, token, err = auth_service.setup_initial_password(pwd)
     if not success:
         raise HTTPException(status_code=400, detail=err or "Setup failed")
-    response.set_cookie(key="session_token", value=token, path="/", httponly=True, samesite="lax", max_age=auth_service.SESSION_TTL_SECONDS)
-    return {"success": True, "token": token, "username": "admin"}
+    response.set_cookie(
+        key="session_token", value=token, path="/",
+        httponly=True, samesite="lax",
+        max_age=auth_service.SESSION_TTL_SECONDS,
+    )
+    # Token is sent via cookie only — do not expose it in the response body
+    return {"success": True, "username": "admin"}
 
 
 @router.post("/auth/login")
 def auth_login(payload: Dict[str, str], response: Response) -> Dict[str, Any]:
-    pwd = payload.get("password", "").strip()
+    pwd = payload.get("password", "")
     success, token, err = auth_service.authenticate(pwd)
     if not success:
         raise HTTPException(status_code=401, detail=err or "Invalid credentials")
-    response.set_cookie(key="session_token", value=token, path="/", httponly=True, samesite="lax", max_age=auth_service.SESSION_TTL_SECONDS)
-    return {"success": True, "token": token, "username": "admin"}
+    response.set_cookie(
+        key="session_token", value=token, path="/",
+        httponly=True, samesite="lax",
+        max_age=auth_service.SESSION_TTL_SECONDS,
+    )
+    # Token is sent via cookie only — do not expose it in the response body
+    return {"success": True, "username": "admin"}
 
 
 @router.post("/auth/logout")
@@ -553,13 +598,10 @@ def auth_logout(request: Request, response: Response) -> Dict[str, Any]:
     return {"success": True, "message": "Logged out successfully"}
 
 
-@router.post("/auth/change-password")
+@router.post("/auth/change-password", dependencies=[Depends(require_auth)])
 def auth_change_password(payload: Dict[str, str], request: Request) -> Dict[str, Any]:
-    token = get_current_token(request)
-    if not auth_service.is_first_run() and not auth_service.verify_session(token):
-        raise HTTPException(status_code=401, detail="Authentication required")
-    old_p = payload.get("old_password", "").strip()
-    new_p = payload.get("new_password", "").strip()
+    old_p = payload.get("old_password", "")
+    new_p = payload.get("new_password", "")
     success, err = auth_service.change_password(old_p, new_p)
     if not success:
         raise HTTPException(status_code=400, detail=err or "Password change failed")
@@ -570,12 +612,12 @@ def auth_change_password(payload: Dict[str, str], request: Request) -> Dict[str,
 # Backups and Rollback Endpoints (Phase 6)
 # -------------------------------------------------------------
 
-@router.get("/backups")
+@router.get("/backups", dependencies=[Depends(require_auth)])
 def get_backups() -> Dict[str, Any]:
     return {"backups": backups_service.list_backups()}
 
 
-@router.post("/backups")
+@router.post("/backups", dependencies=[Depends(require_auth)])
 def create_backup(payload: Dict[str, Any] = None) -> Dict[str, Any]:
     desc = (payload or {}).get("description", "Manual snapshot")
     res = backups_service.create_backup(description=desc)
@@ -584,39 +626,50 @@ def create_backup(payload: Dict[str, Any] = None) -> Dict[str, Any]:
     return res
 
 
-@router.post("/backups/{backup_id}/restore")
+@router.post("/backups/{backup_id}/restore", dependencies=[Depends(require_auth)])
 def restore_backup(backup_id: str) -> Dict[str, Any]:
+    # Validate backup_id format to prevent path traversal
+    import re as _re
+    if not _re.match(r'^snapshot-\d+\.tar\.gz$', backup_id):
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор резервной копии.")
     res = backups_service.restore_backup(backup_id)
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error", "Restore failed"))
     return res
 
 
-@router.delete("/backups/{backup_id}")
+@router.delete("/backups/{backup_id}", dependencies=[Depends(require_auth)])
 def delete_backup(backup_id: str) -> Dict[str, Any]:
+    import re as _re
+    if not _re.match(r'^snapshot-\d+\.tar\.gz$', backup_id):
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор резервной копии.")
     res = backups_service.delete_backup(backup_id)
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error", "Delete failed"))
     return res
 
 
-@router.get("/backups/{backup_id}/download")
+@router.get("/backups/{backup_id}/download", dependencies=[Depends(require_auth)])
 def download_backup(backup_id: str):
+    import re as _re
+    if not _re.match(r'^snapshot-\d+\.tar\.gz$', backup_id):
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор резервной копии.")
     fpath = backups_service.get_backup_filepath(backup_id)
     if not fpath or not fpath.exists():
         raise HTTPException(status_code=404, detail="Backup archive not found")
     return FileResponse(path=str(fpath), filename=backup_id, media_type="application/gzip")
 
 
-@router.post("/backups/factory-reset")
+@router.post("/backups/factory-reset", dependencies=[Depends(require_auth)])
 def factory_reset() -> Dict[str, Any]:
     return backups_service.execute_factory_reset()
 
 
-@router.post("/system/reboot")
+@router.post("/system/reboot", dependencies=[Depends(require_auth)])
 def reboot_gateway() -> Dict[str, Any]:
     """Graceful reboot of the gateway device."""
     import subprocess
+    import platform
     if platform.system() == "Linux":
         try:
             subprocess.Popen(["systemctl", "reboot"])
@@ -629,8 +682,8 @@ def reboot_gateway() -> Dict[str, Any]:
 # Server-Sent Events (SSE) Real-time Stream
 # -------------------------------------------------------------
 
-@router.get("/events")
-async def events_stream():
+@router.get("/events", dependencies=[Depends(require_auth)])
+async def events_stream(request: Request):
     """SSE endpoint streaming live metrics every 1.5 seconds."""
     async def event_generator():
         try:
@@ -675,3 +728,4 @@ async def events_stream():
             "X-Accel-Buffering": "no",
         },
     )
+
