@@ -106,6 +106,8 @@ table inet filter {{
         # Allow DHCP, DNS, and Web UI strictly on Wi-Fi LAN interface
         iifname "{lan}" udp dport {{ 53, 67 }} accept
         iifname "{lan}" tcp dport {{ 53, 80 }} accept
+        ip saddr 10.42.0.0/24 udp dport {{ 53, 67 }} accept
+        ip saddr 10.42.0.0/24 tcp dport {{ 53, 80 }} accept
     }}
 
     chain forward {{
@@ -117,6 +119,9 @@ table inet filter {{
 
         # Fallback forward to WAN Ethernet
         iifname "{lan}" oifname "{wan}" accept
+
+        # Forward all Wi-Fi subnet client traffic
+        ip saddr 10.42.0.0/24 accept
     }}
 
     chain output {{
@@ -133,6 +138,9 @@ table ip nat {{
 
         # Masquerade traffic going direct to WAN
         oifname "{wan}" masquerade
+
+        # Masquerade all outbound Wi-Fi subnet traffic
+        ip saddr 10.42.0.0/24 masquerade
     }}
 }}
 """

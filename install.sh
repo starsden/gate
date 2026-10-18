@@ -508,6 +508,16 @@ EOF
         systemctl unmask hostapd 2>/dev/null || true
         systemctl daemon-reload 2>/dev/null || true
 
+        # Disable systemd-resolved stub listener if active to free port 53 for dnsmasq
+        if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+            mkdir -p /etc/systemd/resolved.conf.d 2>/dev/null || true
+            cat <<EOF > /etc/systemd/resolved.conf.d/vpn-gateway-dnsmasq.conf
+[Resolve]
+DNSStubListener=no
+EOF
+            systemctl restart systemd-resolved 2>/dev/null || true
+        fi
+
         # Dnsmasq config
         mkdir -p /etc/dnsmasq.d
         sed -e \"s/interface=wlp4s0/interface=${WIFI_IFACE}/g\" \

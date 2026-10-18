@@ -451,6 +451,11 @@ def set_vpn_state(action: str) -> Dict[str, Any]:
                     _vpn_start_time = time.time()
                 else:
                     _vpn_start_time = None
+                try:
+                    from .network import sync_policy_routing
+                    sync_policy_routing()
+                except Exception:
+                    pass
                 return {"success": True, "action": action, "status": "active" if action != "stop" else "inactive"}
             else:
                 return {"success": False, "error": res.stderr.strip() or "Failed to control service"}
@@ -532,6 +537,11 @@ def apply_vpn_config(vless_uri: str) -> Dict[str, Any]:
 
         # Save profile
         save_vpn_profile(profile)
+        try:
+            from .network import sync_policy_routing
+            sync_policy_routing()
+        except Exception:
+            pass
 
         return {
             "success": True,

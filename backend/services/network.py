@@ -282,8 +282,13 @@ def sync_policy_routing() -> Dict[str, Any]:
             except Exception:
                 pass
 
-        # 5. Default route to xray0 TUN in table 100
-        subprocess.run(["ip", "route", "replace", "default", "dev", "xray0", "table", "100"], check=False)
+        # 5. Default route in table 100 (xray0 TUN or direct WAN fallback)
+        has_xray0 = os.path.exists("/sys/class/net/xray0")
+        if has_xray0 and vless_server_ip:
+            subprocess.run(["ip", "route", "replace", "default", "dev", "xray0", "table", "100"], check=False)
+        elif wan_gw:
+            # Fallback direct WAN gateway routing for Wi-Fi clients when VPN is inactive or not configured
+            subprocess.run(["ip", "route", "replace", "default", "via", wan_gw, "dev", wan, "table", "100"], check=False)
 
         # 6. Ensure nftables ruleset is loaded into kernel
         nft_bin = shutil.which("nft") or ("/usr/sbin/nft" if os.path.exists("/usr/sbin/nft") else None)
