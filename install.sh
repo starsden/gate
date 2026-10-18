@@ -550,11 +550,28 @@ EOF
         printf 'nameserver 1.1.1.1\nnameserver 77.88.8.8\n' > /etc/resolv.conf
     fi
 
+    # Generate Xray config from saved profile if present
+    if [[ -f "${CONFIG_DIR}/vpn.json" && -f "${INSTALL_DIR}/venv/bin/python" ]]; then
+        "${INSTALL_DIR}/venv/bin/python" -c "
+import json
+from pathlib import Path
+from backend.services.vpn import generate_xray_config, read_vpn_profile
+p = read_vpn_profile()
+if p and p.get('address'):
+    cfg = generate_xray_config(p)
+    for path in [Path('/usr/local/etc/xray/config.json'), Path('/etc/xray/config.json')]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cfg, indent=2))
+" 2>/dev/null || true
+    fi
+
     # Unmask, enable and start daemons
     systemctl unmask hostapd 2>/dev/null || true
     systemctl enable --now hostapd 2>/dev/null || true
     systemctl enable --now dnsmasq 2>/dev/null || true
-    systemctl enable --now xray 2>/dev/null || true
+    if [[ -f /usr/local/etc/xray/config.json || -f /etc/xray/config.json ]]; then
+        systemctl enable --now xray 2>/dev/null || true
+    fi
     systemctl restart vpn-gateway-routes.service 2>/dev/null || true
 }
 
