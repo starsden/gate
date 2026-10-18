@@ -560,6 +560,18 @@ EOF
 ExecStartPost=/bin/sh -c 'sleep 1; /sbin/ip route replace default dev xray0 table 100 2>/dev/null || true'
 EOF
         systemctl daemon-reload 2>/dev/null || true
+
+        # Ensure fallback DNS if name resolution is broken
+        if ! ping -c 1 -W 2 google.com >/dev/null 2>&1 && ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
+            echo -e "nameserver 1.1.1.1\nnameserver 77.88.8.8" > /etc/resolv.conf
+        fi
+
+        # Unmask, enable and start daemons
+        systemctl unmask hostapd 2>/dev/null || true
+        systemctl enable --now hostapd 2>/dev/null || true
+        systemctl enable --now dnsmasq 2>/dev/null || true
+        systemctl enable --now xray 2>/dev/null || true
+        systemctl restart vpn-gateway-routes.service 2>/dev/null || true
     "
 }
 
@@ -689,6 +701,7 @@ main() {
             install_minimal_packages
             ensure_source_files
             deploy_app
+            configure_networking
             setup_web_service
             show_completion_banner
             ;;
