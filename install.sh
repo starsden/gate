@@ -474,6 +474,8 @@ EOF
     run_with_spinner "Configuring kernel forwarding, AP configuration, and firewall" bash -c "
         cat <<EOF > /etc/sysctl.d/99-vpn-gateway.conf
 net.ipv4.ip_forward = 1
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
 net.ipv6.conf.all.disable_ipv6 = 0
 EOF
         sysctl --system >/dev/null 2>&1 || true
@@ -550,6 +552,14 @@ EOF
             cp \"${SOURCE_DIR}/systemd/vpn-gateway-routes.service\" \"${SYSTEMD_DIR}/\"
             systemctl enable vpn-gateway-routes.service 2>/dev/null || true
         fi
+
+        # Ensure Xray service automatically attaches default route to table 100 on start
+        mkdir -p /etc/systemd/system/xray.service.d 2>/dev/null || true
+        cat <<EOF > /etc/systemd/system/xray.service.d/routing.conf
+[Service]
+ExecStartPost=/bin/sh -c 'sleep 1; /sbin/ip route replace default dev xray0 table 100 2>/dev/null || true'
+EOF
+        systemctl daemon-reload 2>/dev/null || true
     "
 }
 

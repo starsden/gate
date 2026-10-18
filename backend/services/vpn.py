@@ -18,9 +18,17 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 XRAY_CONF_PATH = Path("/etc/xray/config.json")
+ALT_XRAY_CONF_PATH = Path("/usr/local/etc/xray/config.json")
 CONFIG_DIR = Path("/etc/vpn-gateway")
 BACKUP_DIR = CONFIG_DIR / "backups"
 LOCAL_STATE_FILE = Path(__file__).resolve().parent.parent.parent / "configs" / "vpn_state.json"
+
+def get_xray_config_files() -> list:
+    targets = []
+    for p in [ALT_XRAY_CONF_PATH, XRAY_CONF_PATH]:
+        if p.exists() or p.parent.exists():
+            targets.append(p)
+    return targets if targets else [XRAY_CONF_PATH]
 
 _vpn_start_time: Optional[float] = None
 
@@ -205,11 +213,15 @@ def generate_xray_config(profile: Dict[str, Any], routing_cfg: Optional[Dict[str
         "inbounds": [
             {
                 "tag": "tun-in",
-                "port": 0,
-                "protocol": "dokodemo-door",
+                "protocol": "tun",
                 "settings": {
-                    "network": "tcp,udp",
-                    "followRedirect": True,
+                    "name": "xray0",
+                    "MTU": 1500,
+                    "address": [
+                        "172.19.0.1/30"
+                    ],
+                    "autoRoute": False,
+                    "strictRoute": False,
                 },
                 "sniffing": {
                     "enabled": True,
@@ -504,21 +516,23 @@ def apply_vpn_config(vless_uri: str) -> Dict[str, Any]:
         }
 
     # Production Linux workflow with Backup & Rollback
-    target_file = XRAY_CONF_PATH
-    backup_file = None
+    target_files = get_xray_config_files()
+    backups = {}
 
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        if target_file.exists():
-            timestamp = int(time.time())
-            backup_file = BACKUP_DIR / f"xray_config.json.{timestamp}.bak"
-            shutil.copy2(target_file, backup_file)
+        timestamp = int(time.time())
+        for tf in target_files:
+            if tf.exists():
+                bf = BACKUP_DIR / f"{tf.name}.{timestamp}.bak"
+                shutil.copy2(tf, bf)
+                backups[tf] = bf
 
-        # Atomic write
-        temp_file = target_file.with_suffix(".tmp")
-        with open(temp_file, "w") as f:
-            json.dump(xray_conf, f, indent=2)
-        temp_file.replace(target_file)
+            tf.parent.mkdir(parents=True, exist_ok=True)
+            temp_file = tf.with_suffix(".tmp")
+            with open(temp_file, "w") as f:
+                json.dump(xray_conf, f, indent=2)
+            temp_file.replace(tf)
 
         # Restart xray daemon
         restart_res = subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=10)
@@ -529,9 +543,10 @@ def apply_vpn_config(vless_uri: str) -> Dict[str, Any]:
 
         if not is_healthy:
             # Rollback
-            if backup_file and backup_file.exists():
-                shutil.copy2(backup_file, target_file)
-                subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
+            for tf, bf in backups.items():
+                if bf.exists():
+                    shutil.copy2(bf, tf)
+            subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
             err = restart_res.stderr.strip() or "Xray failed to activate with the new VLESS profile. Rolled back."
             return {"success": False, "error": err}
 

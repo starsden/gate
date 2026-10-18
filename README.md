@@ -66,7 +66,7 @@ It routes all local Wi-Fi clients (`10.42.0.0/24`) through an encrypted **VLESS 
 ```
                       ┌─────────────────────────────────────┐
                       │    Client Devices (Phones/Laptops)  │
-                      └──────────────────┬──────────────────┘
+                      └──────────────────┬──────────────────┘ 
                                          │ Wi-Fi 802.11 b/g/n (WPA2)
                                          ▼
                              ┌───────────────────────┐

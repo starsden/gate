@@ -712,11 +712,13 @@ table inet filter {{
     type filter hook forward priority filter; policy accept;
     ct state established,related accept
     
-    # Forward Wi-Fi client traffic to xray0 TUN
+    # Forward Wi-Fi client traffic to xray0 TUN and return traffic
     iifname "{wifi_iface}" oifname "xray0" accept
+    iifname "xray0" oifname "{wifi_iface}" accept
     
     # Fallback forward to WAN Ethernet
     iifname "{wifi_iface}" oifname "{wan_iface}" accept
+    iifname "{wan_iface}" oifname "{wifi_iface}" accept
 
     # Forward all Wi-Fi subnet client traffic
     ip saddr 10.42.0.0/24 accept
@@ -731,14 +733,8 @@ table ip nat {{
     chain postrouting {{
     type nat hook postrouting priority srcnat; policy accept;
     
-    # Masquerade traffic going to Xray TUN
-    oifname "xray0" masquerade
-    
-    # Masquerade traffic going direct to WAN
+    # Only masquerade traffic exiting directly via physical WAN
     oifname "{wan_iface}" masquerade
-
-    # Masquerade all outbound Wi-Fi subnet traffic
-    ip saddr 10.42.0.0/24 masquerade
     }}
 }}
 """
