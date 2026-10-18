@@ -246,6 +246,7 @@ def test_subscription_service():
             assert ctx.check_hostname is True
             assert ctx.verify_mode == ssl.CERT_REQUIRED
 
+    cleanup_test_configs()
     print("      -> Subscription decoder, parser, SSL fallback, and state persistence OK")
 
 
@@ -378,10 +379,12 @@ async def test_fastapi_endpoints():
     assert "clients" in r["json"]
     print("      -> [200] GET /api/clients")
 
-    # VPN Status
+    # VPN Status (Initial clean state: not_configured)
     r = await asgi_request(app, "GET", "/api/vpn", headers=auth_headers)
     assert r["status"] == 200
-    print("      -> [200] GET /api/vpn")
+    assert r["json"]["status"] == "not_configured"
+    assert r["json"]["server"] == "Not Configured"
+    print("      -> [200] GET /api/vpn (Clean unconfigured default)")
 
     # Network & Routing
     r = await asgi_request(app, "GET", "/api/network", headers=auth_headers)
@@ -412,11 +415,12 @@ async def test_fastapi_endpoints():
     assert "logs" in r["json"]
     print("      -> [200] GET /api/logs/vpn-gateway")
 
-    # Subscription Endpoints
+    # Subscription Endpoints (Initial clean state: no preloaded subscription)
     r = await asgi_request(app, "GET", "/api/vpn/subscription", headers=auth_headers)
     assert r["status"] == 200
-    assert "servers" in r["json"]
-    print("      -> [200] GET /api/vpn/subscription")
+    assert r["json"]["has_subscription"] is False
+    assert len(r["json"]["servers"]) == 0
+    print("      -> [200] GET /api/vpn/subscription (Zero preloaded servers)")
 
     # Import via API
     sub_payload = {
@@ -477,6 +481,10 @@ async def test_fastapi_endpoints():
     assert r["status"] == 200
     print("      -> [200] POST /api/setup/account")
 
+    r = await asgi_request(app, "POST", "/api/setup/step", headers=auth_headers, body={"step": 4})
+    assert r["status"] == 200
+    print("      -> [200] POST /api/setup/step")
+
     r = await asgi_request(app, "POST", "/api/setup/finalize", headers=auth_headers)
     assert r["status"] == 200
     print("      -> [200] POST /api/setup/finalize")
@@ -501,8 +509,9 @@ def test_setup_service():
     assert ok is True
 
     # Stage Account
-    ok, err = setup.save_account_stage_data({"username": "admin", "password": "adminpassword123", "confirm_password": "adminpassword123"})
+    ok, token, err = setup.save_account_stage_data({"username": "admin", "password": "adminpassword123", "confirm_password": "adminpassword123"})
     assert ok is True
+    assert token is not None
 
     # Install packages job
     res = setup.start_package_installation()
@@ -515,6 +524,7 @@ def test_setup_service():
     assert f_res["success"] is True
     f_status = setup.get_final_setup_status()
     assert "progress" in f_status
+    cleanup_test_configs()
     print("      -> Package verification, staged parameters, and async progress runners OK")
 
 
@@ -574,27 +584,39 @@ def test_html_assets():
     # Check CSS syntax (balanced braces)
     assert css.count("{") == css.count("}"), "CSS brace imbalance detected!"
 
-    print("      -> All 7 page views, Setup Wizard (5 pages & progress bar), modals, and CSS integrity validated")
+def cleanup_test_configs():
+    config_dir = Path(__file__).resolve().parent.parent / "configs"
+    for fname in ["vpn_state.json", "subscription.json", "setup_state.json", "auth.json"]:
+        fpath = config_dir / fname
+        if fpath.exists():
+            try:
+                fpath.unlink()
+            except Exception:
+                pass
 
 
 def main():
     print("=" * 65)
     print("      LINUX VPN GATEWAY - END-TO-END VERIFICATION SUITE")
     print("=" * 65)
-    test_auth_service()
-    test_vpn_parser()
-    test_subscription_service()
-    test_routing_service()
-    test_setup_service()
-    test_wifi_service()
-    test_diagnostics_service()
-    test_backups_service()
-    test_logs_service()
-    asyncio.run(test_fastapi_endpoints())
-    test_html_assets()
-    print("=" * 65)
-    print("      ALL TESTS PASSED SUCCESSFULLY (100% GREEN)!")
-    print("=" * 65)
+    cleanup_test_configs()
+    try:
+        test_auth_service()
+        test_vpn_parser()
+        test_subscription_service()
+        test_routing_service()
+        test_setup_service()
+        test_wifi_service()
+        test_diagnostics_service()
+        test_backups_service()
+        test_logs_service()
+        asyncio.run(test_fastapi_endpoints())
+        test_html_assets()
+        print("=" * 65)
+        print("      ALL TESTS PASSED SUCCESSFULLY (100% GREEN)!")
+        print("=" * 65)
+    finally:
+        cleanup_test_configs()
 
 
 if __name__ == "__main__":

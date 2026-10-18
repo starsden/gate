@@ -440,12 +440,29 @@ def save_setup_vpn_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.post("/setup/account", dependencies=[Depends(require_setup_or_auth)])
-def save_setup_account_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Save dashboard administrator credentials."""
-    success, err = setup_service.save_account_stage_data(payload)
+def save_setup_account_endpoint(payload: Dict[str, Any], response: Response) -> Dict[str, Any]:
+    """Save dashboard administrator credentials and establish active session."""
+    success, token, err = setup_service.save_account_stage_data(payload)
     if not success:
         raise HTTPException(status_code=400, detail=err or "Invalid account parameters")
+    if token:
+        response.set_cookie(
+            key="session_token",
+            value=token,
+            path="/",
+            httponly=True,
+            samesite="lax",
+            max_age=auth_service.SESSION_TTL_SECONDS,
+        )
     return {"success": True, "message": "Admin credentials staged"}
+
+
+@router.post("/setup/step", dependencies=[Depends(require_setup_or_auth)])
+def set_setup_step_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist current setup wizard step index."""
+    step = int(payload.get("step", 1))
+    setup_service.save_step(step)
+    return {"success": True, "step": step}
 
 
 @router.post("/setup/finalize", dependencies=[Depends(require_setup_or_auth)])

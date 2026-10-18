@@ -77,15 +77,12 @@ def load_setup_state() -> Dict[str, Any]:
         except Exception:
             pass
 
-    # Default state
-    # If auth.json already has an established admin password from an existing installation,
-    # we treat setup as completed to ensure backwards compatibility.
-    is_existing = not auth_service.is_first_run()
+    # Default state: initial setup is NOT completed until step 5 finalization succeeds
     default_state = {
-        "completed": is_existing,
-        "completed_at": time.time() if is_existing else None,
-        "current_step": 1 if not is_existing else 5,
-        "packages_installed": is_existing,
+        "completed": False,
+        "completed_at": None,
+        "current_step": 1,
+        "packages_installed": False,
         "wifi": {
             "ssid": "freedom",
             "password": "freedom123",
@@ -114,8 +111,19 @@ def save_setup_state(state: Dict[str, Any]) -> None:
 
 
 def is_setup_completed() -> bool:
+    state_file = get_setup_state_file()
+    if state_file.exists():
+        state = load_setup_state()
+        return bool(state.get("completed", False)) and not auth_service.is_first_run()
+    # If state file does not exist, setup is not completed
+    return False
+
+
+def save_step(step: int) -> bool:
     state = load_setup_state()
-    return bool(state.get("completed", False)) and not auth_service.is_first_run()
+    state["current_step"] = step
+    save_setup_state(state)
+    return True
 
 
 # ------------------------------------------------------------------------------
@@ -471,25 +479,21 @@ def save_vpn_stage_data(payload: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
 # 4. Administrator Account Stage
 # ------------------------------------------------------------------------------
 
-def save_account_stage_data(payload: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+def save_account_stage_data(payload: Dict[str, Any]) -> Tuple[bool, Optional[str], Optional[str]]:
     username = str(payload.get("username", "admin")).strip() or "admin"
     password = str(payload.get("password", ""))
     confirm_password = str(payload.get("confirm_password", ""))
 
     if len(password) < 8:
-        return False, "Пароль администратора должен содержать не менее 8 символов."
+        return False, None, "Пароль администратора должен содержать не менее 8 символов."
 
     if password != confirm_password:
-        return False, "Пароли не совпадают."
+        return False, None, "Пароли не совпадают."
 
     # Hash and persist immediately via auth_service — never store plaintext in setup_state.json
-    success, _, err = auth_service.setup_initial_password(password)
+    success, token, err = auth_service.set_admin_password(password)
     if not success:
-        # If already configured (e.g. re-running setup), try to change password instead
-        record = auth_service.load_auth_record()
-        if not record or not record.get("password_hash"):
-            return False, err or "Не удалось сохранить учетные данные администратора."
-        # Password already set — that is acceptable during wizard re-run
+        return False, None, err or "Не удалось сохранить учетные данные администратора."
 
     state = load_setup_state()
     state["account"] = {
@@ -497,128 +501,128 @@ def save_account_stage_data(payload: Dict[str, Any]) -> Tuple[bool, Optional[str
         "configured": True,
         # NOTE: password is intentionally NOT stored here
     }
+    state["completed"] = False  # Critical: completed ONLY after finalization step 5 finishes!
     state["current_step"] = 5
     save_setup_state(state)
-    return True, None
+    return True, token, None
 
 
 # ------------------------------------------------------------------------------
 # 5. Final System Configuration with Progress Bar
 # ------------------------------------------------------------------------------
 
-def _final_setup_worker():
+def _run_final_setup_steps():
     global _final_setup_state
-    with _final_setup_lock:
-        _final_setup_state["status"] = "running"
-        _final_setup_state["progress"] = 5
-        _final_setup_state["current_task"] = "Инициализация конфигуратора..."
-        _final_setup_state["logs"] = ["Запуск окончательной настройки системы VPN Gateway..."]
-        _final_setup_state["error"] = None
-        _final_setup_state["token"] = None
+    _final_setup_state["status"] = "running"
+    _final_setup_state["progress"] = 5
+    _final_setup_state["current_task"] = "Инициализация конфигуратора..."
+    _final_setup_state["logs"] = ["Запуск окончательной настройки системы VPN Gateway..."]
+    _final_setup_state["error"] = None
+    _final_setup_state["token"] = None
 
-        state = load_setup_state()
-        wifi_cfg = state.get("wifi", {})
-        vpn_cfg = state.get("vpn", {})
-        account_cfg = state.get("account", {})
+    state = load_setup_state()
+    wifi_cfg = state.get("wifi", {})
+    vpn_cfg = state.get("vpn", {})
+    account_cfg = state.get("account", {})
 
-        # Task 1: Detect interfaces (15%)
-        _final_setup_state["progress"] = 15
-        _final_setup_state["current_task"] = "Определение сетевых интерфейсов..."
-        _final_setup_state["logs"].append("Сканирование сетевого оборудования...")
-        
-        wan_iface = "enp3s0"
-        wifi_iface = wifi_service.get_wifi_interface()
-        if _is_linux():
-            ifaces = network_service.get_default_interfaces()
-            wan_iface = ifaces.get("wan") or "enp3s0"
-            wifi_iface = ifaces.get("lan") or wifi_iface
+    # Task 1: Detect interfaces (15%)
+    _final_setup_state["progress"] = 15
+    _final_setup_state["current_task"] = "Определение сетевых интерфейсов..."
+    _final_setup_state["logs"].append("Сканирование сетевого оборудования...")
+    
+    wan_iface = "enp3s0"
+    wifi_iface = wifi_service.get_wifi_interface()
+    if _is_linux():
+        ifaces = network_service.get_default_interfaces()
+        wan_iface = ifaces.get("wan") or "enp3s0"
+        wifi_iface = ifaces.get("lan") or wifi_iface
 
-        _final_setup_state["logs"].append(f"Интерфейс WAN: {wan_iface}, Интерфейс Wi-Fi: {wifi_iface}")
-        if _is_linux():
-            try:
-                # 1. RF-kill unblock
-                subprocess.run(["rfkill", "unblock", "wifi"], capture_output=True, timeout=3)
-                subprocess.run(["rfkill", "unblock", "all"], capture_output=True, timeout=3)
-
-                # 2. Prevent NetworkManager from managing Wi-Fi AP interface
-                nm_conf_dir = Path("/etc/NetworkManager/conf.d")
-                if nm_conf_dir.exists():
-                    (nm_conf_dir / "99-unmanage-wlan.conf").write_text(f"[keyfile]\nunmanaged-devices=interface-name:{wifi_iface}\n")
-                    subprocess.run(["systemctl", "reload", "NetworkManager"], capture_output=True, timeout=3)
-
-                # 3. Terminate conflicting client wpa_supplicant on AP interface
-                subprocess.run(["wpa_cli", "-i", wifi_iface, "terminate"], capture_output=True, timeout=3)
-
-                # 4. Set regulatory domain
-                subprocess.run(["iw", "reg", "set", wifi_cfg.get("country", "RU")], capture_output=True, timeout=3)
-
-                # 5. Assign static IP to Wi-Fi interface and bring link UP
-                subprocess.run(["ip", "link", "set", wifi_iface, "up"], capture_output=True, timeout=3)
-                subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", wifi_iface], capture_output=True, timeout=3)
-                _final_setup_state["logs"].append(f"Интерфейс {wifi_iface} разблокирован (rfkill) и настроен (10.42.0.1/24).")
-            except Exception as e:
-                _final_setup_state["logs"].append(f"Предупреждение подготовки Wi-Fi интерфейса: {str(e)}")
-        time.sleep(0.4)
-
-        # Task 2: Kernel parameters / IPv4 Forwarding (30%)
-        _final_setup_state["progress"] = 30
-        _final_setup_state["current_task"] = "Включение маршрутизации ядра Linux (IPv4 forward)..."
-        if _is_linux():
-            try:
-                sysctl_path = Path("/etc/sysctl.d/99-vpn-gateway.conf")
-                sysctl_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(sysctl_path, "w") as f:
-                    f.write("net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.disable_ipv6 = 0\n")
-                subprocess.run(["sysctl", "--system"], capture_output=True, timeout=5)
-                subprocess.run(["sysctl", "-w", "net.ipv4.ip_forward=1"], capture_output=True, timeout=5)
-                _final_setup_state["logs"].append("IPv4 forwarding активирован в sysctl.")
-            except Exception as e:
-                _final_setup_state["logs"].append(f"Предупреждение sysctl: {str(e)}")
-        else:
-            _final_setup_state["logs"].append("[Dev] Симуляция включения IPv4 forwarding.")
-        time.sleep(0.4)
-
-        # Task 3: Write hostapd configuration (45%)
-        _final_setup_state["progress"] = 45
-        _final_setup_state["current_task"] = "Генерация конфигурации точки доступа Wi-Fi (hostapd)..."
-        ssid = wifi_cfg.get("ssid", "freedom")
-        password = wifi_cfg.get("password", "freedom123")
-        channel = wifi_cfg.get("channel", 6)
-        country = wifi_cfg.get("country", "RU")
-
+    _final_setup_state["logs"].append(f"Интерфейс WAN: {wan_iface}, Интерфейс Wi-Fi: {wifi_iface}")
+    if _is_linux():
         try:
-            hostapd_content = wifi_service.generate_hostapd_content(wifi_iface, ssid, password, channel, country, True)
-        except Exception:
-            hostapd_content = wifi_service.generate_hostapd_content(wifi_iface, "freedom", "freedom123", 6, "RU", True)
-        if _is_linux():
-            try:
-                hostapd_file = Path("/etc/hostapd/hostapd.conf")
-                hostapd_file.parent.mkdir(parents=True, exist_ok=True)
-                with open(hostapd_file, "w") as f:
-                    f.write(hostapd_content)
+            # 1. RF-kill unblock
+            subprocess.run(["rfkill", "unblock", "wifi"], capture_output=True, timeout=3)
+            subprocess.run(["rfkill", "unblock", "all"], capture_output=True, timeout=3)
 
-                # Debian requires DAEMON_CONF in /etc/default/hostapd
-                default_hostapd = Path("/etc/default/hostapd")
-                default_hostapd.parent.mkdir(parents=True, exist_ok=True)
-                default_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\nDAEMON_OPTS=""\n')
+            # 2. Prevent NetworkManager from managing Wi-Fi AP interface
+            nm_conf_dir = Path("/etc/NetworkManager/conf.d")
+            if nm_conf_dir.exists():
+                (nm_conf_dir / "99-unmanage-wlan.conf").write_text(f"[keyfile]\nunmanaged-devices=interface-name:{wifi_iface}\n")
+                subprocess.run(["systemctl", "reload", "NetworkManager"], capture_output=True, timeout=3)
 
-                subprocess.run(["systemctl", "unmask", "hostapd"], capture_output=True, timeout=5)
-                subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=5)
-                _final_setup_state["logs"].append(f"Конфигурация hostapd сохранена (SSID: {ssid}, Channel: {channel}).")
-            except Exception as e:
-                _final_setup_state["logs"].append(f"Предупреждение hostapd: {str(e)}")
-        else:
-            dev_hostapd = LOCAL_CONFIG_DIR / "hostapd.conf"
-            dev_hostapd.parent.mkdir(parents=True, exist_ok=True)
-            with open(dev_hostapd, "w") as f:
+            # 3. Terminate conflicting client wpa_supplicant on AP interface
+            subprocess.run(["wpa_cli", "-i", wifi_iface, "terminate"], capture_output=True, timeout=3)
+
+            # 4. Set regulatory domain
+            subprocess.run(["iw", "reg", "set", wifi_cfg.get("country", "RU")], capture_output=True, timeout=3)
+
+            # 5. Assign static IP to Wi-Fi interface and bring link UP
+            subprocess.run(["ip", "link", "set", wifi_iface, "up"], capture_output=True, timeout=3)
+            subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", wifi_iface], capture_output=True, timeout=3)
+            _final_setup_state["logs"].append(f"Интерфейс {wifi_iface} разблокирован (rfkill) и настроен (10.42.0.1/24).")
+        except Exception as e:
+            _final_setup_state["logs"].append(f"Предупреждение подготовки Wi-Fi интерфейса: {str(e)}")
+    time.sleep(0.4)
+
+    # Task 2: Kernel parameters / IPv4 Forwarding (30%)
+    _final_setup_state["progress"] = 30
+    _final_setup_state["current_task"] = "Включение маршрутизации ядра Linux (IPv4 forward)..."
+    if _is_linux():
+        try:
+            sysctl_path = Path("/etc/sysctl.d/99-vpn-gateway.conf")
+            sysctl_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(sysctl_path, "w") as f:
+                f.write("net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.disable_ipv6 = 0\n")
+            subprocess.run(["sysctl", "--system"], capture_output=True, timeout=5)
+            subprocess.run(["sysctl", "-w", "net.ipv4.ip_forward=1"], capture_output=True, timeout=5)
+            _final_setup_state["logs"].append("IPv4 forwarding активирован в sysctl.")
+        except Exception as e:
+            _final_setup_state["logs"].append(f"Предупреждение sysctl: {str(e)}")
+    else:
+        _final_setup_state["logs"].append("[Dev] Симуляция включения IPv4 forwarding.")
+    time.sleep(0.4)
+
+    # Task 3: Write hostapd configuration (45%)
+    _final_setup_state["progress"] = 45
+    _final_setup_state["current_task"] = "Генерация конфигурации точки доступа Wi-Fi (hostapd)..."
+    ssid = wifi_cfg.get("ssid", "freedom")
+    password = wifi_cfg.get("password", "freedom123")
+    channel = wifi_cfg.get("channel", 6)
+    country = wifi_cfg.get("country", "RU")
+
+    try:
+        hostapd_content = wifi_service.generate_hostapd_content(wifi_iface, ssid, password, channel, country, True)
+    except Exception:
+        hostapd_content = wifi_service.generate_hostapd_content(wifi_iface, "freedom", "freedom123", 6, "RU", True)
+    if _is_linux():
+        try:
+            hostapd_file = Path("/etc/hostapd/hostapd.conf")
+            hostapd_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(hostapd_file, "w") as f:
                 f.write(hostapd_content)
-            _final_setup_state["logs"].append(f"[Dev] Сохранена конфигурация hostapd.conf (SSID: {ssid}).")
-        time.sleep(0.4)
 
-        # Task 4: Write dnsmasq configuration (60%)
-        _final_setup_state["progress"] = 60
-        _final_setup_state["current_task"] = "Настройка служб DHCP и DNS (dnsmasq)..."
-        dnsmasq_content = f"""# /etc/dnsmasq.d/vpn-gateway.conf
+            # Debian requires DAEMON_CONF in /etc/default/hostapd
+            default_hostapd = Path("/etc/default/hostapd")
+            default_hostapd.parent.mkdir(parents=True, exist_ok=True)
+            default_hostapd.write_text('DAEMON_CONF="/etc/hostapd/hostapd.conf"\nDAEMON_OPTS=""\n')
+
+            subprocess.run(["systemctl", "unmask", "hostapd"], capture_output=True, timeout=5)
+            subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=5)
+            _final_setup_state["logs"].append(f"Конфигурация hostapd сохранена (SSID: {ssid}, Channel: {channel}).")
+        except Exception as e:
+            _final_setup_state["logs"].append(f"Предупреждение hostapd: {str(e)}")
+    else:
+        dev_hostapd = LOCAL_CONFIG_DIR / "hostapd.conf"
+        dev_hostapd.parent.mkdir(parents=True, exist_ok=True)
+        with open(dev_hostapd, "w") as f:
+            f.write(hostapd_content)
+        _final_setup_state["logs"].append(f"[Dev] Сохранена конфигурация hostapd.conf (SSID: {ssid}).")
+    time.sleep(0.4)
+
+    # Task 4: Write dnsmasq configuration (60%)
+    _final_setup_state["progress"] = 60
+    _final_setup_state["current_task"] = "Настройка служб DHCP и DNS (dnsmasq)..."
+    dnsmasq_content = f"""# /etc/dnsmasq.d/vpn-gateway.conf
 # Generated by VPN Gateway Setup Wizard
 interface={wifi_iface}
 bind-interfaces
@@ -633,27 +637,27 @@ server=8.8.8.8
 log-dhcp
 log-facility=/var/log/dnsmasq.log
 """
-        if _is_linux():
-            try:
-                dnsmasq_file = Path("/etc/dnsmasq.d/vpn-gateway.conf")
-                dnsmasq_file.parent.mkdir(parents=True, exist_ok=True)
-                with open(dnsmasq_file, "w") as f:
-                    f.write(dnsmasq_content)
-                _final_setup_state["logs"].append("Конфигурация dnsmasq сохранена (Подсеть 10.42.0.0/24).")
-            except Exception as e:
-                _final_setup_state["logs"].append(f"Предупреждение dnsmasq: {str(e)}")
-        else:
-            dev_dnsmasq = LOCAL_CONFIG_DIR / "dnsmasq.conf"
-            dev_dnsmasq.parent.mkdir(parents=True, exist_ok=True)
-            with open(dev_dnsmasq, "w") as f:
+    if _is_linux():
+        try:
+            dnsmasq_file = Path("/etc/dnsmasq.d/vpn-gateway.conf")
+            dnsmasq_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(dnsmasq_file, "w") as f:
                 f.write(dnsmasq_content)
-            _final_setup_state["logs"].append("[Dev] Сохранена конфигурация dnsmasq.conf.")
-        time.sleep(0.4)
+            _final_setup_state["logs"].append("Конфигурация dnsmasq сохранена (Подсеть 10.42.0.0/24).")
+        except Exception as e:
+            _final_setup_state["logs"].append(f"Предупреждение dnsmasq: {str(e)}")
+    else:
+        dev_dnsmasq = LOCAL_CONFIG_DIR / "dnsmasq.conf"
+        dev_dnsmasq.parent.mkdir(parents=True, exist_ok=True)
+        with open(dev_dnsmasq, "w") as f:
+            f.write(dnsmasq_content)
+        _final_setup_state["logs"].append("[Dev] Сохранена конфигурация dnsmasq.conf.")
+    time.sleep(0.4)
 
-        # Task 5: Configure nftables firewall & NAT (72%)
-        _final_setup_state["progress"] = 72
-        _final_setup_state["current_task"] = "Настройка межсетевого экрана и NAT (nftables)..."
-        nft_content = f"""#!/usr/sbin/nft -f
+    # Task 5: Configure nftables firewall & NAT (72%)
+    _final_setup_state["progress"] = 72
+    _final_setup_state["current_task"] = "Настройка межсетевого экрана и NAT (nftables)..."
+    nft_content = f"""#!/usr/sbin/nft -f
 # /etc/nftables.conf
 # Generated by VPN Gateway Setup Wizard
 
@@ -661,155 +665,166 @@ flush ruleset
 
 table inet filter {{
     chain input {{
-        type filter hook input priority filter; policy accept;
-        iifname "lo" accept
-        ct state established,related accept
-        
-        # Allow DHCP, DNS, and Web UI on Wi-Fi LAN
-        iifname "{wifi_iface}" udp dport {{ 53, 67 }} accept
-        iifname "{wifi_iface}" tcp dport {{ 53, 80 }} accept
+    type filter hook input priority filter; policy accept;
+    iifname "lo" accept
+    ct state established,related accept
+    
+    # Allow DHCP, DNS, and Web UI on Wi-Fi LAN
+    iifname "{wifi_iface}" udp dport {{ 53, 67 }} accept
+    iifname "{wifi_iface}" tcp dport {{ 53, 80 }} accept
     }}
 
     chain forward {{
-        type filter hook forward priority filter; policy accept;
-        ct state established,related accept
-        
-        # Forward Wi-Fi client traffic to xray0 TUN
-        iifname "{wifi_iface}" oifname "xray0" accept
-        
-        # Fallback forward to WAN Ethernet
-        iifname "{wifi_iface}" oifname "{wan_iface}" accept
+    type filter hook forward priority filter; policy accept;
+    ct state established,related accept
+    
+    # Forward Wi-Fi client traffic to xray0 TUN
+    iifname "{wifi_iface}" oifname "xray0" accept
+    
+    # Fallback forward to WAN Ethernet
+    iifname "{wifi_iface}" oifname "{wan_iface}" accept
     }}
 
     chain output {{
-        type filter hook output priority filter; policy accept;
+    type filter hook output priority filter; policy accept;
     }}
 }}
 
 table ip nat {{
     chain postrouting {{
-        type nat hook postrouting priority srcnat; policy accept;
-        
-        # Masquerade traffic going to Xray TUN
-        oifname "xray0" masquerade
-        
-        # Masquerade traffic going direct to WAN
-        oifname "{wan_iface}" masquerade
+    type nat hook postrouting priority srcnat; policy accept;
+    
+    # Masquerade traffic going to Xray TUN
+    oifname "xray0" masquerade
+    
+    # Masquerade traffic going direct to WAN
+    oifname "{wan_iface}" masquerade
     }}
 }}
 """
-        if _is_linux():
+    if _is_linux():
+        try:
+            # Ensure NAT and masquerade modules are loaded
+            for mod in ["nf_tables", "nf_nat", "nft_nat", "nft_masq"]:
+                subprocess.run(["modprobe", mod], capture_output=True, timeout=2)
             try:
-                # Ensure NAT and masquerade modules are loaded
-                for mod in ["nf_tables", "nf_nat", "nft_nat", "nft_masq"]:
-                    subprocess.run(["modprobe", mod], capture_output=True, timeout=2)
-                try:
-                    mod_load_dir = Path("/etc/modules-load.d")
-                    mod_load_dir.mkdir(parents=True, exist_ok=True)
-                    (mod_load_dir / "vpn-gateway.conf").write_text("nft_nat\nnft_masq\nnf_nat\n")
-                except Exception:
-                    pass
+                mod_load_dir = Path("/etc/modules-load.d")
+                mod_load_dir.mkdir(parents=True, exist_ok=True)
+                (mod_load_dir / "vpn-gateway.conf").write_text("nft_nat\nnft_masq\nnf_nat\n")
+            except Exception:
+                pass
 
-                nft_file = Path("/etc/nftables.conf")
-                with open(nft_file, "w") as f:
-                    f.write(nft_content)
-                nft_bin = shutil.which("nft") or ("/usr/sbin/nft" if os.path.exists("/usr/sbin/nft") else "nft")
-                res_nft = subprocess.run([nft_bin, "-f", "/etc/nftables.conf"], capture_output=True, text=True, timeout=5)
-                if res_nft.returncode != 0:
-                    _final_setup_state["logs"].append(f"Ошибка загрузки nftables: {res_nft.stderr.strip()}")
-                else:
-                    _final_setup_state["logs"].append("Правила nftables успешно применены.")
-                subprocess.run(["systemctl", "enable", "nftables.service"], capture_output=True, timeout=5)
-            except Exception as e:
-                _final_setup_state["logs"].append(f"Предупреждение nftables: {str(e)}")
-        else:
-            dev_nft = LOCAL_CONFIG_DIR / "nftables.conf"
-            with open(dev_nft, "w") as f:
+            nft_file = Path("/etc/nftables.conf")
+            with open(nft_file, "w") as f:
                 f.write(nft_content)
-            _final_setup_state["logs"].append("[Dev] Сохранена конфигурация nftables.conf.")
-        time.sleep(0.4)
+            nft_bin = shutil.which("nft") or ("/usr/sbin/nft" if os.path.exists("/usr/sbin/nft") else "nft")
+            res_nft = subprocess.run([nft_bin, "-f", "/etc/nftables.conf"], capture_output=True, text=True, timeout=5)
+            if res_nft.returncode != 0:
+                _final_setup_state["logs"].append(f"Ошибка загрузки nftables: {res_nft.stderr.strip()}")
+            else:
+                _final_setup_state["logs"].append("Правила nftables успешно применены.")
+            subprocess.run(["systemctl", "enable", "nftables.service"], capture_output=True, timeout=5)
+        except Exception as e:
+            _final_setup_state["logs"].append(f"Предупреждение nftables: {str(e)}")
+    else:
+        dev_nft = LOCAL_CONFIG_DIR / "nftables.conf"
+        with open(dev_nft, "w") as f:
+            f.write(nft_content)
+        _final_setup_state["logs"].append("[Dev] Сохранена конфигурация nftables.conf.")
+    time.sleep(0.4)
 
-        # Task 6: VPN tunnel configuration (82%)
-        _final_setup_state["progress"] = 82
-        _final_setup_state["current_task"] = "Настройка туннеля и профиля VPN..."
+    # Task 6: VPN tunnel configuration (82%)
+    _final_setup_state["progress"] = 82
+    _final_setup_state["current_task"] = "Настройка туннеля и профиля VPN..."
 
-        vless_uri = vpn_cfg.get("vless_uri", "").strip()
-        if vless_uri:
-            try:
-                if vpn_cfg.get("is_subscription"):
-                    subscription_service.import_subscription(vless_uri)
-                    _final_setup_state["logs"].append("Импортирована VPN подписка.")
+    vless_uri = vpn_cfg.get("vless_uri", "").strip()
+    if vless_uri:
+        try:
+            if vpn_cfg.get("is_subscription"):
+                subscription_service.import_subscription(vless_uri)
+                _final_setup_state["logs"].append("Импортирована VPN подписка.")
+            else:
+                vpn_res = vpn_service.apply_vpn_config(vless_uri)
+                if vpn_res.get("success"):
+                    _final_setup_state["logs"].append("Профиль VLESS REALITY успешно настроен.")
                 else:
-                    vpn_res = vpn_service.apply_vpn_config(vless_uri)
-                    if vpn_res.get("success"):
-                        _final_setup_state["logs"].append("Профиль VLESS REALITY успешно настроен.")
-                    else:
-                        _final_setup_state["logs"].append(f"Предупреждение VLESS: {vpn_res.get('error')}")
-            except Exception as e:
-                _final_setup_state["logs"].append(f"Ошибка настройки VPN: {str(e)}")
-        else:
-            _final_setup_state["logs"].append("Настройка VPN пропущена (можно настроить в дашборде).")
+                    _final_setup_state["logs"].append(f"Предупреждение VLESS: {vpn_res.get('error')}")
+        except Exception as e:
+            _final_setup_state["logs"].append(f"Ошибка настройки VPN: {str(e)}")
+    else:
+        _final_setup_state["logs"].append("Настройка VPN пропущена (можно настроить в дашборде).")
 
-        # Install systemd routing service
-        if _is_linux():
+    # Install systemd routing service
+    if _is_linux():
+        try:
+            routes_src = BASE_DIR / "systemd" / "vpn-gateway-routes.service"
+            if routes_src.exists():
+                shutil.copy2(routes_src, SYSTEMD_DIR / "vpn-gateway-routes.service")
+                subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=5)
+                subprocess.run(["systemctl", "enable", "vpn-gateway-routes.service"], capture_output=True, timeout=5)
+                _final_setup_state["logs"].append("Служба маршрутизации vpn-gateway-routes установлена.")
+        except Exception as e:
+            _final_setup_state["logs"].append(f"Предупреждение routes.service: {str(e)}")
+    time.sleep(0.4)
+
+    # Task 7: Start all system services (92%)
+    _final_setup_state["progress"] = 92
+    _final_setup_state["current_task"] = "Запуск системных демонов (nftables, hostapd, dnsmasq, xray)..."
+    if _is_linux():
+        # Ensure Wi-Fi link is UP with static IP before starting hostapd & dnsmasq
+        subprocess.run(["ip", "link", "set", wifi_iface, "up"], capture_output=True, timeout=3)
+        subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", wifi_iface], capture_output=True, timeout=3)
+
+        services = ["nftables", "hostapd", "dnsmasq", "xray", "vpn-gateway-routes"]
+        for s in services:
             try:
-                routes_src = BASE_DIR / "systemd" / "vpn-gateway-routes.service"
-                if routes_src.exists():
-                    shutil.copy2(routes_src, SYSTEMD_DIR / "vpn-gateway-routes.service")
-                    subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=5)
-                    subprocess.run(["systemctl", "enable", "vpn-gateway-routes.service"], capture_output=True, timeout=5)
-                    _final_setup_state["logs"].append("Служба маршрутизации vpn-gateway-routes установлена.")
+                subprocess.run(["systemctl", "unmask", f"{s}.service"], capture_output=True, timeout=5)
+                subprocess.run(["systemctl", "enable", f"{s}.service"], capture_output=True, timeout=5)
+                svc_res = subprocess.run(["systemctl", "restart", f"{s}.service"], capture_output=True, text=True, timeout=10)
+                if svc_res.returncode == 0:
+                    _final_setup_state["logs"].append(f"Служба {s}.service успешно запущена.")
+                else:
+                    _final_setup_state["logs"].append(f"Предупреждение при запуске {s}.service: {svc_res.stderr.strip()}")
             except Exception as e:
-                _final_setup_state["logs"].append(f"Предупреждение routes.service: {str(e)}")
-        time.sleep(0.4)
+                _final_setup_state["logs"].append(f"Служба {s}: {str(e)}")
+    else:
+        _final_setup_state["logs"].append("[Dev] Демоны hostapd, dnsmasq, nftables, xray активированы.")
+    time.sleep(0.4)
 
-        # Task 7: Start all system services (92%)
-        _final_setup_state["progress"] = 92
-        _final_setup_state["current_task"] = "Запуск системных демонов (nftables, hostapd, dnsmasq, xray)..."
-        if _is_linux():
-            # Ensure Wi-Fi link is UP with static IP before starting hostapd & dnsmasq
-            subprocess.run(["ip", "link", "set", wifi_iface, "up"], capture_output=True, timeout=3)
-            subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", wifi_iface], capture_output=True, timeout=3)
+    # Task 8: Account setup & completion (100%)
+    _final_setup_state["progress"] = 100
+    _final_setup_state["current_task"] = "Создание учетной записи и финализация..."
 
-            services = ["nftables", "hostapd", "dnsmasq", "xray", "vpn-gateway-routes"]
-            for s in services:
-                try:
-                    subprocess.run(["systemctl", "unmask", f"{s}.service"], capture_output=True, timeout=5)
-                    subprocess.run(["systemctl", "enable", f"{s}.service"], capture_output=True, timeout=5)
-                    svc_res = subprocess.run(["systemctl", "restart", f"{s}.service"], capture_output=True, text=True, timeout=10)
-                    if svc_res.returncode == 0:
-                        _final_setup_state["logs"].append(f"Служба {s}.service успешно запущена.")
-                    else:
-                        _final_setup_state["logs"].append(f"Предупреждение при запуске {s}.service: {svc_res.stderr.strip()}")
-                except Exception as e:
-                    _final_setup_state["logs"].append(f"Служба {s}: {str(e)}")
-        else:
-            _final_setup_state["logs"].append("[Dev] Демоны hostapd, dnsmasq, nftables, xray активированы.")
-        time.sleep(0.4)
+    # Admin password was already hashed and saved during save_account_stage_data.
+    # Here we just need a valid session token for the auto-login after wizard completes.
+    token = None
+    if not auth_service.is_first_run():
+        # Account already configured — create a new session token
+        token = auth_service.create_session("admin")
+    else:
+        # Fallback: account stage was skipped (shouldn't normally happen)
+        _final_setup_state["logs"].append("Предупреждение: учётная запись администратора не настроена.")
 
-        # Task 8: Account setup & completion (100%)
-        _final_setup_state["progress"] = 100
-        _final_setup_state["current_task"] = "Создание учетной записи и финализация..."
+    # Mark setup as completed
+    state["completed"] = True
+    state["completed_at"] = time.time()
+    save_setup_state(state)
 
-        # Admin password was already hashed and saved during save_account_stage_data.
-        # Here we just need a valid session token for the auto-login after wizard completes.
-        token = None
-        if not auth_service.is_first_run():
-            # Account already configured — create a new session token
-            token = auth_service.create_session("admin")
-        else:
-            # Fallback: account stage was skipped (shouldn't normally happen)
-            _final_setup_state["logs"].append("Предупреждение: учётная запись администратора не настроена.")
+    _final_setup_state["status"] = "completed"
+    _final_setup_state["token"] = token
+    _final_setup_state["current_task"] = "Окончательная настройка успешно завершена!"
+    _final_setup_state["logs"].append("Все компоненты сконфигурированы. Переход в дашборд...")
 
-        # Mark setup as completed
-        state["completed"] = True
-        state["completed_at"] = time.time()
-        save_setup_state(state)
 
-        _final_setup_state["status"] = "completed"
-        _final_setup_state["token"] = token
-        _final_setup_state["current_task"] = "Окончательная настройка успешно завершена!"
-        _final_setup_state["logs"].append("Все компоненты сконфигурированы. Переход в дашборд...")
+def _final_setup_worker():
+    global _final_setup_state
+    with _final_setup_lock:
+        try:
+            _run_final_setup_steps()
+        except Exception as e:
+            _final_setup_state["status"] = "error"
+            _final_setup_state["error"] = str(e)
+            _final_setup_state["logs"].append(f"Ошибка финализации системы: {str(e)}")
 
 
 def start_final_setup() -> Dict[str, Any]:

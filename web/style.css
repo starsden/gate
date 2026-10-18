@@ -486,6 +486,7 @@ select, input, textarea { font-family: var(--font-sans); }
 
 .status-indicator-dot.error   { background: var(--danger); }
 .status-indicator-dot.warning { background: var(--warning); }
+.status-indicator-dot.neutral { background: var(--text-muted); }
 
 .btn-refresh {
   width: 32px;

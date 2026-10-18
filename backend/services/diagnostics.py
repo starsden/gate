@@ -112,9 +112,17 @@ def check_policy_rule() -> Tuple[bool, str]:
 
 def check_table_100_routes() -> Dict[str, Any]:
     """Inspect Table 100 routes for default xray0 and VLESS server route."""
+    profile = read_vpn_profile()
+    vless_ip = profile.get("address", "")
+
     if not _is_linux() or not shutil.which("ip"):
-        profile = read_vpn_profile()
-        vless_ip = profile.get("address", "185.196.220.14")
+        if not vless_ip:
+            return {
+                "default_route_ok": False,
+                "default_detail": "No VPN configured",
+                "vless_route_ok": False,
+                "vless_detail": "No VPN configured",
+            }
         return {
             "default_route_ok": True,
             "default_detail": "default dev xray0 table 100",

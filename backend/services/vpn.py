@@ -130,23 +130,6 @@ def read_vpn_profile() -> Dict[str, Any]:
         except Exception:
             pass
 
-    # 3. Only return dummy profile if explicitly requested via ENABLE_MOCKS=1
-    if os.environ.get("ENABLE_MOCKS") == "1":
-        return {
-            "uuid": "96c810f6-2895-46ae-886e-b3f5451a657c",
-            "address": "185.196.220.14",
-            "port": 443,
-            "transport": "tcp",
-            "security": "reality",
-            "flow": "xtls-rprx-vision",
-            "sni": "cloudflare.com",
-            "fingerprint": "chrome",
-            "publicKey": "J8p0sX5_m0ckKeyPlaceholderForTesting1234567890",
-            "shortId": "1a2b3c4d",
-            "spiderX": "/",
-            "remark": "Primary VLESS Gateway",
-        }
-
     return {}
 
 
@@ -338,8 +321,6 @@ def get_vpn_traffic() -> Tuple[str, str]:
         except Exception:
             pass
 
-    if os.environ.get("ENABLE_MOCKS") == "1":
-        return "4.2 GB", "832 MB"
     return "0 B", "0 B"
 
 

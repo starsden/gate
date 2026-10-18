@@ -436,6 +436,7 @@ deploy_app() {
         cp -r '${SOURCE_DIR}/backend' '${INSTALL_DIR}/' && \
         cp -r '${SOURCE_DIR}/web' '${INSTALL_DIR}/' && \
         cp -r '${SOURCE_DIR}/configs' '${INSTALL_DIR}/' && \
+        rm -f '${INSTALL_DIR}/configs/vpn_state.json' '${INSTALL_DIR}/configs/subscription.json' '${INSTALL_DIR}/configs/auth.json' '${INSTALL_DIR}/configs/setup_state.json' 2>/dev/null || true && \
         cp '${SOURCE_DIR}/install.sh' '${INSTALL_DIR}/' 2>/dev/null || true
         cp '${SOURCE_DIR}/update.sh' '${INSTALL_DIR}/' 2>/dev/null || true
         chmod +x '${INSTALL_DIR}/install.sh' '${INSTALL_DIR}/update.sh' 2>/dev/null || true
@@ -632,7 +633,7 @@ main() {
             ;;
         factory-reset)
             log_warn "Performing full factory reset..."
-            rm -f "${CONFIG_DIR}/auth.json" "${CONFIG_DIR}/vpn.json" "${CONFIG_DIR}/wifi_state.json" "${CONFIG_DIR}/setup_state.json"
+            rm -f "${CONFIG_DIR}/auth.json" "${CONFIG_DIR}/vpn.json" "${CONFIG_DIR}/vpn_state.json" "${CONFIG_DIR}/subscription.json" "${CONFIG_DIR}/wifi_state.json" "${CONFIG_DIR}/setup_state.json"
             ensure_source_files
             configure_networking
             setup_web_service

@@ -188,8 +188,8 @@
         </div>
         <div class="topbar-actions">
           <div class="pill pill-status" id="topbar-vpn-pill">
-            <span class="status-indicator-dot" id="topbar-vpn-dot"></span>
-            <span id="topbar-vpn-text">VPN Connected</span>
+            <span class="status-indicator-dot neutral" id="topbar-vpn-dot"></span>
+            <span id="topbar-vpn-text">No VPN Configured</span>
           </div>
           <button id="btn-refresh" class="btn-refresh" aria-label="Refresh data">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -211,11 +211,11 @@
           <div class="paper-banner">
             <div class="paper-banner-left">
               <div class="paper-banner-eyebrow">VPN GATEWAY</div>
-              <h2 class="paper-banner-title" id="dash-master-status">VPN Connected</h2>
+              <h2 class="paper-banner-title" id="dash-master-status">No VPN Configured</h2>
               <div class="paper-banner-meta">
-                <span class="paper-chip paper-chip-success" id="dash-master-badge">Active</span>
-                <span class="paper-chip paper-chip-neutral" id="dash-hero-proto">VLESS / REALITY</span>
-                <span class="paper-chip paper-chip-neutral" id="dash-hero-latency">42 ms</span>
+                <span class="paper-chip paper-chip-neutral" id="dash-master-badge">Not Configured</span>
+                <span class="paper-chip paper-chip-neutral" id="dash-hero-proto">—</span>
+                <span class="paper-chip paper-chip-neutral" id="dash-hero-latency">—</span>
               </div>
             </div>
             <div class="paper-banner-actions">
@@ -270,20 +270,20 @@
                   </svg>
                   <span class="paper-card-title">VPN</span>
                 </div>
-                <span class="paper-chip paper-chip-success" id="dash-vpn-badge">VLESS / REALITY</span>
+                <span class="paper-chip paper-chip-neutral" id="dash-vpn-badge">Not Configured</span>
               </div>
               <div class="paper-card-body">
                 <div class="paper-kv-row">
                   <span class="paper-kv-key">Server</span>
-                  <span class="paper-kv-val paper-mono" id="dash-vpn-server">185.196.220.14:443</span>
+                  <span class="paper-kv-val paper-mono" id="dash-vpn-server">—</span>
                 </div>
                 <div class="paper-kv-row">
                   <span class="paper-kv-key">SNI</span>
-                  <span class="paper-kv-val paper-mono" id="dash-vpn-sni">cloudflare.com</span>
+                  <span class="paper-kv-val paper-mono" id="dash-vpn-sni">—</span>
                 </div>
                 <div class="paper-kv-row paper-kv-last">
                   <span class="paper-kv-key">Traffic</span>
-                  <span class="paper-kv-val paper-mono" id="dash-vpn-traffic">↓ 2.4 GB &nbsp; ↑ 410 MB</span>
+                  <span class="paper-kv-val paper-mono" id="dash-vpn-traffic">↓ 0 B &nbsp; ↑ 0 B</span>
                 </div>
               </div>
             </div>
@@ -327,7 +327,7 @@
                   </svg>
                   <span class="paper-card-title">Bandwidth</span>
                 </div>
-                <span class="paper-chip paper-chip-neutral" id="dash-latency-badge">42 ms</span>
+                <span class="paper-chip paper-chip-neutral" id="dash-latency-badge">—</span>
               </div>
               <div class="paper-bw-body">
                 <div class="paper-bw-block">
@@ -542,52 +542,52 @@
                   </svg>
                   <span class="card-title">Xray VLESS Tunnel</span>
                 </div>
-                <span class="status-badge badge-success" id="vpn-page-status-badge">● Connected</span>
+                <span class="status-badge badge-neutral" id="vpn-page-status-badge">○ Not Configured</span>
               </div>
               <div class="card-body vpn-stats-grid-body">
                 <div class="stat-row">
                   <span class="stat-label">Protocol</span>
-                  <span class="stat-val font-bold" id="vpn-info-proto">VLESS</span>
+                  <span class="stat-val font-bold" id="vpn-info-proto">—</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Security</span>
-                  <span class="stat-val font-bold text-accent" id="vpn-info-security">REALITY</span>
+                  <span class="stat-val font-bold text-accent" id="vpn-info-security">—</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Transport</span>
-                  <span class="stat-val font-mono" id="vpn-info-transport">TCP</span>
+                  <span class="stat-val font-mono" id="vpn-info-transport">—</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Flow</span>
-                  <span class="stat-val font-mono" id="vpn-info-flow">xtls-rprx-vision</span>
+                  <span class="stat-val font-mono" id="vpn-info-flow">—</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Fingerprint</span>
-                  <span class="stat-val font-mono" id="vpn-info-fp">chrome</span>
+                  <span class="stat-val font-mono" id="vpn-info-fp">—</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">SNI (Server Name)</span>
-                  <span class="stat-val font-mono" id="vpn-info-sni">cloudflare.com</span>
+                  <span class="stat-val font-mono" id="vpn-info-sni">—</span>
                 </div>
                 <div class="stat-row full-width">
                   <span class="stat-label">Server</span>
-                  <span class="stat-val font-mono font-bold" id="vpn-info-server">185.196.220.14:443</span>
+                  <span class="stat-val font-mono font-bold" id="vpn-info-server">—</span>
                 </div>
                 <div class="stat-row full-width">
                   <span class="stat-label">UUID</span>
-                  <span class="stat-val font-mono text-muted" id="vpn-info-uuid">••••••••-••••-••••-••••-••••••••657c</span>
+                  <span class="stat-val font-mono text-muted" id="vpn-info-uuid">—</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Uptime</span>
-                  <span class="stat-val font-mono" id="vpn-info-uptime">2h 17m</span>
+                  <span class="stat-val font-mono" id="vpn-info-uptime">0m</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Latency</span>
-                  <span class="stat-val font-mono" id="vpn-info-latency">42 ms</span>
+                  <span class="stat-val font-mono" id="vpn-info-latency">—</span>
                 </div>
                 <div class="stat-row full-width">
                   <span class="stat-label">Traffic</span>
-                  <span class="stat-val font-mono" id="vpn-info-traffic">↓ 4.2 GB &nbsp; ↑ 832 MB</span>
+                  <span class="stat-val font-mono" id="vpn-info-traffic">↓ 0 B &nbsp; ↑ 0 B</span>
                 </div>
               </div>
               <div class="card-footer vpn-actions-footer">
@@ -597,8 +597,8 @@
                   </svg>
                   Restart VPN
                 </button>
-                <button type="button" id="btn-vpn-toggle" class="btn btn-danger btn-sm">
-                  Disconnect
+                <button type="button" id="btn-vpn-toggle" class="btn btn-secondary btn-sm" disabled>
+                  Not Configured
                 </button>
                 <button type="button" id="btn-vpn-test" class="btn btn-primary btn-sm">
                   Test Connection
@@ -1668,14 +1668,14 @@
             <div class="form-group">
               <label class="form-label" for="wizard-account-pass">Пароль администратора</label>
               <div class="input-password-wrap">
-                <input type="password" id="wizard-account-pass" class="form-control" placeholder="Минимум 6 символов" minlength="6" required />
+                <input type="password" id="wizard-account-pass" class="form-control" placeholder="Минимум 8 символов" minlength="8" required />
                 <button type="button" class="btn-toggle-eye" id="btn-toggle-admin-pass" aria-label="Показать/скрыть пароль">👁</button>
               </div>
             </div>
 
             <div class="form-group">
               <label class="form-label" for="wizard-account-confirm">Подтверждение пароля</label>
-              <input type="password" id="wizard-account-confirm" class="form-control" placeholder="Повторите введенный пароль" minlength="6" required />
+              <input type="password" id="wizard-account-confirm" class="form-control" placeholder="Повторите введенный пароль" minlength="8" required />
             </div>
           </form>
         </div>

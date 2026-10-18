@@ -134,6 +134,24 @@ def is_first_run() -> bool:
     return False
 
 
+def set_admin_password(password: str) -> Tuple[bool, Optional[str], Optional[str]]:
+    """Set or update the master admin password during onboarding/wizard setup."""
+    if len(password) < 8:
+        return False, None, "Password must be at least 8 characters long."
+
+    hashed = hash_password(password)
+    record = load_auth_record() or {}
+    record.update({
+        "username": "admin",
+        "password_hash": hashed,
+        "created_at": record.get("created_at") or time.time(),
+        "last_login": time.time(),
+    })
+    save_auth_record(record)
+    token = create_session("admin")
+    return True, token, None
+
+
 def setup_initial_password(password: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """Set up the master admin password on first run. Returns (success, token, error)."""
     if len(password) < 8:
@@ -142,18 +160,7 @@ def setup_initial_password(password: str) -> Tuple[bool, Optional[str], Optional
     if not is_first_run():
         return False, None, "Initial setup has already been completed."
 
-    hashed = hash_password(password)
-    record = {
-        "username": "admin",
-        "password_hash": hashed,
-        "created_at": time.time(),
-        "last_login": time.time(),
-    }
-    save_auth_record(record)
-
-    # Automatically issue session token
-    token = create_session("admin")
-    return True, token, None
+    return set_admin_password(password)
 
 
 def authenticate(password: str) -> Tuple[bool, Optional[str], Optional[str]]:

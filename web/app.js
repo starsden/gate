@@ -657,36 +657,75 @@
 
   function updateVpnIndicator(status) {
     const isConnected = status === "connected";
-    const statusText = isConnected ? "VPN Connected" : (status === "connecting" ? "VPN Connecting" : "VPN Disconnected");
+    const isNotConfigured = status === "not_configured";
+    let statusText = "VPN Disconnected";
+    if (isConnected) {
+      statusText = "VPN Connected";
+    } else if (status === "connecting") {
+      statusText = "VPN Connecting";
+    } else if (isNotConfigured) {
+      statusText = "No VPN Configured";
+    }
 
     if (elements.topbarVpnText) elements.topbarVpnText.textContent = statusText;
     if (elements.dashMasterStatus) elements.dashMasterStatus.textContent = statusText;
     
-    const dotClass = isConnected ? "" : (status === "connecting" ? "warning" : "error");
+    let dotClass = "";
+    if (isConnected) {
+      dotClass = "";
+    } else if (status === "connecting") {
+      dotClass = "warning";
+    } else if (isNotConfigured) {
+      dotClass = "neutral";
+    } else {
+      dotClass = "error";
+    }
 
     if (elements.topbarVpnDot) elements.topbarVpnDot.className = `status-indicator-dot ${dotClass}`.trim();
     if (elements.mobileVpnBeacon) elements.mobileVpnBeacon.className = `status-indicator-dot ${dotClass}`.trim();
     if (elements.brandBeacon) {
-      elements.brandBeacon.style.backgroundColor = isConnected ? "var(--success)" : (status === "connecting" ? "var(--warning)" : "var(--danger)");
+      elements.brandBeacon.style.backgroundColor = isConnected ? "var(--success)" : (status === "connecting" ? "var(--warning)" : (isNotConfigured ? "var(--text-muted)" : "var(--danger)"));
     }
 
     if (elements.dashMasterBadge) {
-      elements.dashMasterBadge.className = isConnected ? "paper-chip paper-chip-success" : "paper-chip paper-chip-danger";
-      elements.dashMasterBadge.textContent = isConnected ? "Active" : "Offline";
+      if (isConnected) {
+        elements.dashMasterBadge.className = "paper-chip paper-chip-success";
+        elements.dashMasterBadge.textContent = "Active";
+      } else if (isNotConfigured) {
+        elements.dashMasterBadge.className = "paper-chip paper-chip-neutral";
+        elements.dashMasterBadge.textContent = "Not Configured";
+      } else {
+        elements.dashMasterBadge.className = "paper-chip paper-chip-danger";
+        elements.dashMasterBadge.textContent = "Offline";
+      }
     }
 
     if (elements.vpnPageStatusBadge) {
-      elements.vpnPageStatusBadge.className = isConnected ? "status-badge badge-success" : "status-badge badge-danger";
-      elements.vpnPageStatusBadge.textContent = isConnected ? "● Connected" : "○ Disconnected";
+      if (isConnected) {
+        elements.vpnPageStatusBadge.className = "status-badge badge-success";
+        elements.vpnPageStatusBadge.textContent = "● Connected";
+      } else if (isNotConfigured) {
+        elements.vpnPageStatusBadge.className = "status-badge badge-neutral";
+        elements.vpnPageStatusBadge.textContent = "○ Not Configured";
+      } else {
+        elements.vpnPageStatusBadge.className = "status-badge badge-danger";
+        elements.vpnPageStatusBadge.textContent = "○ Disconnected";
+      }
     }
 
     if (elements.btnVpnToggle) {
       if (isConnected) {
         elements.btnVpnToggle.className = "btn btn-danger btn-sm";
         elements.btnVpnToggle.textContent = "Disconnect";
+        elements.btnVpnToggle.disabled = false;
+      } else if (isNotConfigured) {
+        elements.btnVpnToggle.className = "btn btn-secondary btn-sm";
+        elements.btnVpnToggle.textContent = "Not Configured";
+        elements.btnVpnToggle.disabled = true;
       } else {
         elements.btnVpnToggle.className = "btn btn-primary btn-sm";
         elements.btnVpnToggle.textContent = "Connect";
+        elements.btnVpnToggle.disabled = false;
       }
     }
   }
@@ -720,12 +759,22 @@
       // VPN Info
       if (data.vpn) {
         updateVpnIndicator(data.vpn.status);
-        if (elements.dashHeroProto) elements.dashHeroProto.textContent = `${data.vpn.protocol} / ${data.vpn.security}`;
-        if (elements.dashVpnBadge) elements.dashVpnBadge.textContent = `${data.vpn.protocol} / ${data.vpn.security}`;
-        if (elements.dashVpnServer) elements.dashVpnServer.textContent = data.vpn.server || "--";
-        if (elements.dashVpnSni) elements.dashVpnSni.textContent = data.vpn.sni || "--";
-        if (elements.dashVpnTraffic) {
-          elements.dashVpnTraffic.textContent = `↓ ${data.vpn.traffic_down}   ↑ ${data.vpn.traffic_up}`;
+        if (data.vpn.status === "not_configured") {
+          if (elements.dashHeroProto) elements.dashHeroProto.textContent = "—";
+          if (elements.dashHeroLatency) elements.dashHeroLatency.textContent = "—";
+          if (elements.dashVpnBadge) elements.dashVpnBadge.textContent = "Not Configured";
+          if (elements.dashVpnServer) elements.dashVpnServer.textContent = "—";
+          if (elements.dashVpnSni) elements.dashVpnSni.textContent = "—";
+          if (elements.dashVpnTraffic) elements.dashVpnTraffic.textContent = "↓ 0 B   ↑ 0 B";
+        } else {
+          if (elements.dashHeroProto) elements.dashHeroProto.textContent = `${data.vpn.protocol} / ${data.vpn.security}`;
+          if (elements.dashHeroLatency) elements.dashHeroLatency.textContent = data.vpn.latency_ms ? `${data.vpn.latency_ms} ms` : "—";
+          if (elements.dashVpnBadge) elements.dashVpnBadge.textContent = `${data.vpn.protocol} / ${data.vpn.security}`;
+          if (elements.dashVpnServer) elements.dashVpnServer.textContent = data.vpn.server || "—";
+          if (elements.dashVpnSni) elements.dashVpnSni.textContent = data.vpn.sni || "—";
+          if (elements.dashVpnTraffic) {
+            elements.dashVpnTraffic.textContent = `↓ ${data.vpn.traffic_down}   ↑ ${data.vpn.traffic_up}`;
+          }
         }
       }
 
@@ -831,34 +880,59 @@
       state.lastVpnData = data;
 
       const isConnected = data.status === "connected";
+      const isNotConfigured = data.status === "not_configured";
       updateVpnIndicator(data.status);
 
-      if (elements.vpnInfoProto) elements.vpnInfoProto.textContent = data.protocol || "VLESS";
-      if (elements.vpnInfoSecurity) elements.vpnInfoSecurity.textContent = data.security || "REALITY";
-      if (elements.vpnInfoTransport) elements.vpnInfoTransport.textContent = data.transport || "TCP";
-      if (elements.vpnInfoServer) elements.vpnInfoServer.textContent = data.server || "--";
-      if (elements.vpnInfoSni) elements.vpnInfoSni.textContent = data.sni || "--";
-      if (elements.vpnInfoFlow) elements.vpnInfoFlow.textContent = data.flow || "--";
-      if (elements.vpnInfoFp) elements.vpnInfoFp.textContent = data.fingerprint || "--";
-      if (elements.vpnInfoUuid) elements.vpnInfoUuid.textContent = data.masked_uuid || "••••••••";
-      if (elements.vpnInfoUptime) elements.vpnInfoUptime.textContent = data.uptime || "--";
-      if (elements.vpnInfoTraffic) {
-        elements.vpnInfoTraffic.textContent = `↓ ${data.traffic_down}   ↑ ${data.traffic_up}`;
-      }
-      if (elements.vpnInfoLatency) {
-        elements.vpnInfoLatency.textContent = data.latency_ms ? `${data.latency_ms} ms` : "--";
-      }
+      if (isNotConfigured) {
+        if (elements.vpnInfoProto) elements.vpnInfoProto.textContent = "—";
+        if (elements.vpnInfoSecurity) elements.vpnInfoSecurity.textContent = "—";
+        if (elements.vpnInfoTransport) elements.vpnInfoTransport.textContent = "—";
+        if (elements.vpnInfoServer) elements.vpnInfoServer.textContent = "—";
+        if (elements.vpnInfoSni) elements.vpnInfoSni.textContent = "—";
+        if (elements.vpnInfoFlow) elements.vpnInfoFlow.textContent = "—";
+        if (elements.vpnInfoFp) elements.vpnInfoFp.textContent = "—";
+        if (elements.vpnInfoUuid) elements.vpnInfoUuid.textContent = "—";
+        if (elements.vpnInfoUptime) elements.vpnInfoUptime.textContent = "0m";
+        if (elements.vpnInfoTraffic) elements.vpnInfoTraffic.textContent = "↓ 0 B   ↑ 0 B";
+        if (elements.vpnInfoLatency) elements.vpnInfoLatency.textContent = "—";
 
-      // Populate summary preview if present
-      if (elements.sumServer) elements.sumServer.textContent = data.server_ip || "--";
-      if (elements.sumPort) elements.sumPort.textContent = String(data.server_port || "443");
-      if (elements.sumSecurity) elements.sumSecurity.textContent = data.security || "REALITY";
-      if (elements.sumTransport) elements.sumTransport.textContent = data.transport || "TCP";
-      if (elements.sumSni) elements.sumSni.textContent = data.sni || "--";
-      if (elements.sumFp) elements.sumFp.textContent = data.fingerprint || "--";
-      if (elements.sumFlow) elements.sumFlow.textContent = data.flow || "--";
-      if (elements.sumUuid) elements.sumUuid.textContent = data.masked_uuid || "••••••••";
-      if (elements.summaryProtoBadge) elements.summaryProtoBadge.textContent = `${data.protocol} / ${data.security}`;
+        if (elements.sumServer) elements.sumServer.textContent = "—";
+        if (elements.sumPort) elements.sumPort.textContent = "—";
+        if (elements.sumSecurity) elements.sumSecurity.textContent = "—";
+        if (elements.sumTransport) elements.sumTransport.textContent = "—";
+        if (elements.sumSni) elements.sumSni.textContent = "—";
+        if (elements.sumFp) elements.sumFp.textContent = "—";
+        if (elements.sumFlow) elements.sumFlow.textContent = "—";
+        if (elements.sumUuid) elements.sumUuid.textContent = "—";
+        if (elements.summaryProtoBadge) elements.summaryProtoBadge.textContent = "Not Configured";
+      } else {
+        if (elements.vpnInfoProto) elements.vpnInfoProto.textContent = data.protocol || "VLESS";
+        if (elements.vpnInfoSecurity) elements.vpnInfoSecurity.textContent = data.security || "REALITY";
+        if (elements.vpnInfoTransport) elements.vpnInfoTransport.textContent = data.transport || "TCP";
+        if (elements.vpnInfoServer) elements.vpnInfoServer.textContent = data.server || "--";
+        if (elements.vpnInfoSni) elements.vpnInfoSni.textContent = data.sni || "--";
+        if (elements.vpnInfoFlow) elements.vpnInfoFlow.textContent = data.flow || "--";
+        if (elements.vpnInfoFp) elements.vpnInfoFp.textContent = data.fingerprint || "--";
+        if (elements.vpnInfoUuid) elements.vpnInfoUuid.textContent = data.masked_uuid || "••••••••";
+        if (elements.vpnInfoUptime) elements.vpnInfoUptime.textContent = data.uptime || "--";
+        if (elements.vpnInfoTraffic) {
+          elements.vpnInfoTraffic.textContent = `↓ ${data.traffic_down}   ↑ ${data.traffic_up}`;
+        }
+        if (elements.vpnInfoLatency) {
+          elements.vpnInfoLatency.textContent = data.latency_ms ? `${data.latency_ms} ms` : "--";
+        }
+
+        // Populate summary preview if present
+        if (elements.sumServer) elements.sumServer.textContent = data.server_ip || "--";
+        if (elements.sumPort) elements.sumPort.textContent = String(data.server_port || "443");
+        if (elements.sumSecurity) elements.sumSecurity.textContent = data.security || "REALITY";
+        if (elements.sumTransport) elements.sumTransport.textContent = data.transport || "TCP";
+        if (elements.sumSni) elements.sumSni.textContent = data.sni || "--";
+        if (elements.sumFp) elements.sumFp.textContent = data.fingerprint || "--";
+        if (elements.sumFlow) elements.sumFlow.textContent = data.flow || "--";
+        if (elements.sumUuid) elements.sumUuid.textContent = data.masked_uuid || "••••••••";
+        if (elements.summaryProtoBadge) elements.summaryProtoBadge.textContent = `${data.protocol} / ${data.security}`;
+      }
 
     } catch (err) {
       console.error("Failed to fetch /api/vpn:", err);
@@ -2905,13 +2979,18 @@
     const pass = elements.wizardAccountPass?.value.trim() || "";
     const confirmPass = elements.wizardAccountConfirm?.value.trim() || "";
 
-    if (pass.length < 6) {
-      showToast("Пароль администратора должен быть не менее 6 символов.", "danger", 3000);
+    if (pass.length < 8) {
+      showToast("Пароль администратора должен быть не менее 8 символов.", "danger", 3000);
       return false;
     }
     if (pass !== confirmPass) {
       showToast("Пароли не совпадают. Пожалуйста, повторите ввод.", "danger", 3000);
       return false;
+    }
+
+    if (elements.btnAccountNext) {
+      elements.btnAccountNext.disabled = true;
+      elements.btnAccountNext.textContent = "Сохранение...";
     }
 
     try {
@@ -2925,6 +3004,10 @@
       return true;
     } catch (err) {
       showToast(`Ошибка настройки аккаунта: ${err.message}`, "danger", 4000);
+      if (elements.btnAccountNext) {
+        elements.btnAccountNext.disabled = false;
+        elements.btnAccountNext.textContent = "Далее: Применение настроек →";
+      }
       return false;
     }
   }
@@ -2945,6 +3028,7 @@
       showToast(`Ошибка запуска финализации: ${err.message}`, "danger", 4000);
       if (elements.btnStartFinalize) {
         elements.btnStartFinalize.disabled = false;
+        elements.btnStartFinalize.style.display = "inline-flex";
         elements.btnStartFinalize.textContent = "⚙️ Запустить окончательную настройку системы";
       }
     }
@@ -3105,6 +3189,14 @@
     if (elements.btnAccountPrev) {
       elements.btnAccountPrev.addEventListener("click", () => setWizardStep(3));
     }
+    const wizardAccountForm = document.getElementById("wizard-account-form");
+    if (wizardAccountForm) {
+      wizardAccountForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (elements.btnAccountNext) elements.btnAccountNext.click();
+      });
+    }
+
     if (elements.btnAccountNext) {
       elements.btnAccountNext.addEventListener("click", async () => {
         const ok = await saveWizardAccount();

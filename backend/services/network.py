@@ -170,13 +170,14 @@ def get_policy_routes() -> List[Dict[str, str]]:
     if not routes:
         # Standard configuration representation for UI
         from .vpn import read_vpn_profile
-        vless_ip = read_vpn_profile().get("address", "185.196.220.14")
+        vless_ip = read_vpn_profile().get("address", "")
         routes = [
             {"destination": "10.42.0.0/24", "device": "wlp4s0", "dev": "wlp4s0", "gateway": "", "scope": "link"},
             {"destination": "192.168.0.0/24", "device": "enp3s0", "dev": "enp3s0", "gateway": "", "scope": "link"},
-            {"destination": vless_ip, "device": "enp3s0", "dev": "enp3s0", "gateway": "192.168.0.1", "scope": "direct-vless", "is_vless_server": True},
-            {"destination": "default", "device": "xray0", "dev": "xray0", "gateway": "", "scope": "vpn-tunnel"},
         ]
+        if vless_ip:
+            routes.append({"destination": vless_ip, "device": "enp3s0", "dev": "enp3s0", "gateway": "192.168.0.1", "scope": "direct-vless", "is_vless_server": True})
+            routes.append({"destination": "default", "device": "xray0", "dev": "xray0", "gateway": "", "scope": "vpn-tunnel"})
 
     return routes
 
