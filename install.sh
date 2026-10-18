@@ -102,7 +102,7 @@ run_with_spinner() {
 INSTALL_DIR="/opt/vpn-gateway"
 CONFIG_DIR="/etc/vpn-gateway"
 SYSTEMD_DIR="/etc/systemd/system"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || echo "")"
 SOURCE_DIR="${SCRIPT_DIR}"
 
 # GitHub Settings for One-Line Remote Installer (curl -fsSL ... | sudo bash)
@@ -455,6 +455,109 @@ deploy_app() {
 # ------------------------------------------------------------------------------
 # 8. Configure Networking & Services (Optional / Repair only)
 # ------------------------------------------------------------------------------
+_configure_networking_step() {
+    cat <<EOF > /etc/sysctl.d/99-vpn-gateway.conf
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
+net.ipv6.conf.all.disable_ipv6 = 0
+EOF
+    sysctl --system >/dev/null 2>&1 || true
+
+    # Unblock RF
+    rfkill unblock wifi 2>/dev/null || true
+    rfkill unblock all 2>/dev/null || true
+
+    # Prevent NetworkManager conflict on Wi-Fi AP interface
+    mkdir -p /etc/NetworkManager/conf.d 2>/dev/null || true
+    cat <<EOF > /etc/NetworkManager/conf.d/99-unmanage-wlan.conf
+[keyfile]
+unmanaged-devices=interface-name:${WIFI_IFACE}
+EOF
+    systemctl reload NetworkManager 2>/dev/null || true
+
+    # Assign static IP and bring Wi-Fi link UP
+    ip addr replace 10.42.0.1/24 dev "${WIFI_IFACE}" 2>/dev/null || true
+    ip link set "${WIFI_IFACE}" up 2>/dev/null || true
+
+    # Hostapd config & Debian daemon defaults
+    mkdir -p /etc/hostapd
+    sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
+        "${SOURCE_DIR}/configs/hostapd.conf" > /etc/hostapd/hostapd.conf
+    # Remove unsupported [SHORT-GI-20] if present in target hostapd.conf
+    sed -i 's/\[SHORT-GI-20\]//g' /etc/hostapd/hostapd.conf 2>/dev/null || true
+
+    cat <<EOF > /etc/default/hostapd
+DAEMON_CONF="/etc/hostapd/hostapd.conf"
+DAEMON_OPTS=""
+EOF
+    systemctl unmask hostapd 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+
+    # Disable systemd-resolved stub listener if active to free port 53 for dnsmasq
+    if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+        mkdir -p /etc/systemd/resolved.conf.d 2>/dev/null || true
+        cat <<EOF > /etc/systemd/resolved.conf.d/vpn-gateway-dnsmasq.conf
+[Resolve]
+DNSStubListener=no
+EOF
+        systemctl restart systemd-resolved 2>/dev/null || true
+    fi
+
+    # Dnsmasq config
+    mkdir -p /etc/dnsmasq.d
+    sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
+        "${SOURCE_DIR}/configs/dnsmasq.conf" > /etc/dnsmasq.d/vpn-gateway.conf
+
+    # Kernel modules for NAT & masquerade
+    modprobe nf_tables 2>/dev/null || true
+    modprobe nf_nat 2>/dev/null || true
+    modprobe nft_nat 2>/dev/null || true
+    modprobe nft_masq 2>/dev/null || true
+    mkdir -p /etc/modules-load.d 2>/dev/null || true
+    cat <<EOF > /etc/modules-load.d/vpn-gateway.conf
+nft_nat
+nft_masq
+nf_nat
+EOF
+
+    # Nftables config & load
+    if [[ -f "${SOURCE_DIR}/configs/nftables.conf" ]]; then
+        sed -e "s/wlp4s0/${WIFI_IFACE}/g" -e "s/enp3s0/${WAN_IFACE}/g" \
+            "${SOURCE_DIR}/configs/nftables.conf" > /etc/nftables.conf
+        if command -v nft >/dev/null 2>&1; then
+            nft -f /etc/nftables.conf 2>/dev/null || true
+            systemctl enable --now nftables 2>/dev/null || true
+        fi
+    fi
+
+    # Install routing service
+    if [[ -f "${SOURCE_DIR}/systemd/vpn-gateway-routes.service" ]]; then
+        cp "${SOURCE_DIR}/systemd/vpn-gateway-routes.service" "${SYSTEMD_DIR}/"
+        systemctl enable vpn-gateway-routes.service 2>/dev/null || true
+    fi
+
+    # Ensure Xray service automatically attaches default route to table 100 on start
+    mkdir -p /etc/systemd/system/xray.service.d 2>/dev/null || true
+    cat <<EOF > /etc/systemd/system/xray.service.d/routing.conf
+[Service]
+ExecStartPost=/bin/sh -c 'sleep 1; /sbin/ip route replace default dev xray0 table 100 2>/dev/null || true'
+EOF
+    systemctl daemon-reload 2>/dev/null || true
+
+    # Ensure fallback DNS if name resolution is broken
+    if ! ping -c 1 -W 2 google.com >/dev/null 2>&1 && ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
+        printf 'nameserver 1.1.1.1\nnameserver 77.88.8.8\n' > /etc/resolv.conf
+    fi
+
+    # Unmask, enable and start daemons
+    systemctl unmask hostapd 2>/dev/null || true
+    systemctl enable --now hostapd 2>/dev/null || true
+    systemctl enable --now dnsmasq 2>/dev/null || true
+    systemctl enable --now xray 2>/dev/null || true
+    systemctl restart vpn-gateway-routes.service 2>/dev/null || true
+}
+
 configure_networking() {
     # Prepare default state config
     if [[ ! -f "${CONFIG_DIR}/config.json" ]]; then
@@ -471,108 +574,7 @@ configure_networking() {
 EOF
     fi
 
-    run_with_spinner "Configuring kernel forwarding, AP configuration, and firewall" bash -c "
-        cat <<EOF > /etc/sysctl.d/99-vpn-gateway.conf
-net.ipv4.ip_forward = 1
-net.ipv4.conf.all.rp_filter = 2
-net.ipv4.conf.default.rp_filter = 2
-net.ipv6.conf.all.disable_ipv6 = 0
-EOF
-        sysctl --system >/dev/null 2>&1 || true
-
-        # Unblock RF
-        rfkill unblock wifi 2>/dev/null || true
-        rfkill unblock all 2>/dev/null || true
-
-        # Prevent NetworkManager conflict on Wi-Fi AP interface
-        mkdir -p /etc/NetworkManager/conf.d 2>/dev/null || true
-        cat <<EOF > /etc/NetworkManager/conf.d/99-unmanage-wlan.conf
-[keyfile]
-unmanaged-devices=interface-name:${WIFI_IFACE}
-EOF
-        systemctl reload NetworkManager 2>/dev/null || true
-
-        # Assign static IP and bring Wi-Fi link UP
-        ip addr replace 10.42.0.1/24 dev \"${WIFI_IFACE}\" 2>/dev/null || true
-        ip link set \"${WIFI_IFACE}\" up 2>/dev/null || true
-
-        # Hostapd config & Debian daemon defaults
-        mkdir -p /etc/hostapd
-        sed -e \"s/interface=wlp4s0/interface=${WIFI_IFACE}/g\" \
-            \"${SOURCE_DIR}/configs/hostapd.conf\" > /etc/hostapd/hostapd.conf
-        # Remove unsupported [SHORT-GI-20] if present in target hostapd.conf
-        sed -i 's/\\[SHORT-GI-20\\]//g' /etc/hostapd/hostapd.conf 2>/dev/null || true
-
-        cat <<EOF > /etc/default/hostapd
-DAEMON_CONF=\"/etc/hostapd/hostapd.conf\"
-DAEMON_OPTS=\"\"
-EOF
-        systemctl unmask hostapd 2>/dev/null || true
-        systemctl daemon-reload 2>/dev/null || true
-
-        # Disable systemd-resolved stub listener if active to free port 53 for dnsmasq
-        if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
-            mkdir -p /etc/systemd/resolved.conf.d 2>/dev/null || true
-            cat <<EOF > /etc/systemd/resolved.conf.d/vpn-gateway-dnsmasq.conf
-[Resolve]
-DNSStubListener=no
-EOF
-            systemctl restart systemd-resolved 2>/dev/null || true
-        fi
-
-        # Dnsmasq config
-        mkdir -p /etc/dnsmasq.d
-        sed -e \"s/interface=wlp4s0/interface=${WIFI_IFACE}/g\" \
-            \"${SOURCE_DIR}/configs/dnsmasq.conf\" > /etc/dnsmasq.d/vpn-gateway.conf
-
-        # Kernel modules for NAT & masquerade
-        modprobe nf_tables 2>/dev/null || true
-        modprobe nf_nat 2>/dev/null || true
-        modprobe nft_nat 2>/dev/null || true
-        modprobe nft_masq 2>/dev/null || true
-        mkdir -p /etc/modules-load.d 2>/dev/null || true
-        cat <<EOF > /etc/modules-load.d/vpn-gateway.conf
-nft_nat
-nft_masq
-nf_nat
-EOF
-
-        # Nftables config & load
-        if [[ -f \"${SOURCE_DIR}/configs/nftables.conf\" ]]; then
-            sed -e \"s/wlp4s0/${WIFI_IFACE}/g\" -e \"s/enp3s0/${WAN_IFACE}/g\" \
-                \"${SOURCE_DIR}/configs/nftables.conf\" > /etc/nftables.conf
-            if command -v nft >/dev/null 2>&1; then
-                nft -f /etc/nftables.conf 2>/dev/null || true
-                systemctl enable --now nftables 2>/dev/null || true
-            fi
-        fi
-
-        # Install routing service
-        if [[ -f \"${SOURCE_DIR}/systemd/vpn-gateway-routes.service\" ]]; then
-            cp \"${SOURCE_DIR}/systemd/vpn-gateway-routes.service\" \"${SYSTEMD_DIR}/\"
-            systemctl enable vpn-gateway-routes.service 2>/dev/null || true
-        fi
-
-        # Ensure Xray service automatically attaches default route to table 100 on start
-        mkdir -p /etc/systemd/system/xray.service.d 2>/dev/null || true
-        cat <<EOF > /etc/systemd/system/xray.service.d/routing.conf
-[Service]
-ExecStartPost=/bin/sh -c 'sleep 1; /sbin/ip route replace default dev xray0 table 100 2>/dev/null || true'
-EOF
-        systemctl daemon-reload 2>/dev/null || true
-
-        # Ensure fallback DNS if name resolution is broken
-        if ! ping -c 1 -W 2 google.com >/dev/null 2>&1 && ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
-            echo -e "nameserver 1.1.1.1\nnameserver 77.88.8.8" > /etc/resolv.conf
-        fi
-
-        # Unmask, enable and start daemons
-        systemctl unmask hostapd 2>/dev/null || true
-        systemctl enable --now hostapd 2>/dev/null || true
-        systemctl enable --now dnsmasq 2>/dev/null || true
-        systemctl enable --now xray 2>/dev/null || true
-        systemctl restart vpn-gateway-routes.service 2>/dev/null || true
-    "
+    run_with_spinner "Configuring kernel forwarding, AP configuration, and firewall" _configure_networking_step
 }
 
 # ------------------------------------------------------------------------------
