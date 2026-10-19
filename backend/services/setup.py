@@ -288,7 +288,7 @@ def _package_installer_worker():
             _package_install_state["progress"] = 100
             _package_install_state["status"] = "completed"
             _package_install_state["message"] = "Все пакеты успешно установлены!"
-            
+
             state = load_setup_state()
             state["packages_installed"] = True
             save_setup_state(state)
@@ -296,16 +296,25 @@ def _package_installer_worker():
 
         # Real Linux Execution
         try:
-            # Step 1: apt-get update
+            env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
+
+            # Step 1: apt-get update (увеличен таймаут до 5 мин, мягкая обработка ошибок)
             _package_install_state["progress"] = 15
             _package_install_state["message"] = "Обновление списков пакетов (apt-get update)..."
-            env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
-            subprocess.run(["apt-get", "update", "-y"], capture_output=True, env=env, timeout=120)
+            update_ok = _run_cmd_log(
+                ["apt-get", "update", "-y"],
+                _package_install_state,
+                timeout=300,  # 5 минут вместо 2
+            )
+            if not update_ok:
+                _package_install_state["logs"].append(
+                    "[ПРЕДУПРЕЖДЕНИЕ] apt-get update завершился с ошибкой — пробуем продолжить установку..."
+                )
 
-            # Step 2: apt-get install missing packages
+            # Step 2: apt-get install системных пакетов
             _package_install_state["progress"] = 35
             _package_install_state["message"] = "Установка системных сетевых утилит..."
-            
+
             apt_pkgs = [
                 "hostapd",
                 "dnsmasq",
@@ -319,32 +328,121 @@ def _package_installer_worker():
                 "ca-certificates",
                 "curl",
                 "tar",
+                "unzip",
             ]
             cmd = ["apt-get", "install", "-y", "--no-install-recommends"] + apt_pkgs
-            _run_cmd_log(cmd, _package_install_state, timeout=300)
+            apt_ok = _run_cmd_log(cmd, _package_install_state, timeout=600)  # 10 минут
+            if not apt_ok:
+                _package_install_state["logs"].append(
+                    "[ПРЕДУПРЕЖДЕНИЕ] Некоторые apt-пакеты не установились — продолжаем..."
+                )
 
-            # Step 3: Install Xray core
-            _package_install_state["progress"] = 75
+            # Step 3: Установка Xray-core (3 метода с fallback)
+            _package_install_state["progress"] = 65
             _package_install_state["message"] = "Установка Xray-core..."
-            if not is_binary_installed("xray"):
-                _package_install_state["logs"].append("Загрузка официального инсталлятора Xray...")
-                xray_cmd = ["bash", "-c", "curl -s -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | bash -s -- install"]
-                _run_cmd_log(xray_cmd, _package_install_state, timeout=180)
-            else:
-                _package_install_state["logs"].append("Xray-core уже установлен в системе.")
 
-            # Create /etc/xray if not present
+            if is_binary_installed("xray"):
+                _package_install_state["logs"].append("Xray-core уже установлен в системе. Пропускаем.")
+            else:
+                xray_installed = False
+
+                # Метод 1: Официальный install-release.sh с GitHub
+                _package_install_state["logs"].append(
+                    "Метод 1: Официальный инсталлятор Xray с GitHub (install-release.sh)..."
+                )
+                _package_install_state["progress"] = 68
+                script_ok = _run_cmd_log(
+                    ["bash", "-c",
+                     "curl -fsSL --connect-timeout 15 --max-time 120 "
+                     "https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
+                     " | bash -s -- install"],
+                    _package_install_state,
+                    timeout=180,
+                )
+                if script_ok and is_binary_installed("xray"):
+                    xray_installed = True
+                    _package_install_state["logs"].append("Xray установлен через официальный скрипт.")
+
+                # Метод 2: Прямой бинарник с GitHub Releases
+                if not xray_installed:
+                    _package_install_state["logs"].append(
+                        "Метод 1 не удался. Метод 2: Прямой бинарник с GitHub Releases..."
+                    )
+                    _package_install_state["progress"] = 74
+                    try:
+                        arch_raw = subprocess.run(
+                            ["uname", "-m"], capture_output=True, text=True, timeout=3
+                        ).stdout.strip()
+                        arch_map = {"x86_64": "64", "aarch64": "arm64-v8a", "armv7l": "arm32-v7a"}
+                        xray_arch = arch_map.get(arch_raw, "64")
+                        xray_zip = f"/tmp/xray-linux-{xray_arch}.zip"
+                        dl_url = (
+                            "https://github.com/XTLS/Xray-core/releases/latest/download/"
+                            f"Xray-linux-{xray_arch}.zip"
+                        )
+                        dl_ok = _run_cmd_log(
+                            ["curl", "-fL", "--connect-timeout", "15", "--max-time", "120",
+                             "-o", xray_zip, dl_url],
+                            _package_install_state,
+                            timeout=150,
+                        )
+                        if dl_ok and os.path.exists(xray_zip):
+                            os.makedirs("/usr/local/bin", exist_ok=True)
+                            unzip_ok = _run_cmd_log(
+                                ["unzip", "-o", xray_zip, "xray", "-d", "/usr/local/bin/"],
+                                _package_install_state,
+                                timeout=30,
+                            )
+                            if unzip_ok:
+                                subprocess.run(["chmod", "+x", "/usr/local/bin/xray"], timeout=3)
+                            try:
+                                os.remove(xray_zip)
+                            except Exception:
+                                pass
+                            if is_binary_installed("xray"):
+                                xray_installed = True
+                                _package_install_state["logs"].append(
+                                    "Xray установлен из бинарника GitHub Releases."
+                                )
+                    except Exception as xe:
+                        _package_install_state["logs"].append(f"Метод 2 ошибка: {xe}")
+
+                # Метод 3: apt install xray (если есть в репозиториях дистрибутива)
+                if not xray_installed:
+                    _package_install_state["logs"].append(
+                        "Метод 2 не удался. Метод 3: Попытка установки xray через apt..."
+                    )
+                    _package_install_state["progress"] = 78
+                    _run_cmd_log(
+                        ["apt-get", "install", "-y", "--no-install-recommends", "xray"],
+                        _package_install_state,
+                        timeout=120,
+                    )
+                    if is_binary_installed("xray"):
+                        xray_installed = True
+                        _package_install_state["logs"].append("Xray установлен через apt.")
+
+                if not xray_installed:
+                    _package_install_state["logs"].append(
+                        "[ПРЕДУПРЕЖДЕНИЕ] Не удалось установить Xray автоматически. "
+                        "Установите вручную после завершения wizard: "
+                        "https://github.com/XTLS/Xray-core/releases"
+                    )
+
+            # Создать /etc/xray если не существует
             Path("/etc/xray").mkdir(parents=True, exist_ok=True)
 
             # Final verify
             _package_install_state["progress"] = 95
             _package_install_state["message"] = "Проверка установленных компонентов..."
             chk = check_system_packages()
-            
+
             _package_install_state["progress"] = 100
             _package_install_state["status"] = "completed"
-            _package_install_state["message"] = f"Установка завершена! Установлено компонентов: {chk['installed_count']}/{chk['total']}"
-            
+            _package_install_state["message"] = (
+                f"Установка завершена! Установлено компонентов: {chk['installed_count']}/{chk['total']}"
+            )
+
             state = load_setup_state()
             state["packages_installed"] = True
             save_setup_state(state)
@@ -810,6 +908,21 @@ table ip nat {{
         # Ensure Wi-Fi link is UP with static IP before starting hostapd & dnsmasq
         subprocess.run(["ip", "link", "set", wifi_iface, "up"], capture_output=True, timeout=3)
         subprocess.run(["ip", "addr", "replace", "10.42.0.1/24", "dev", wifi_iface], capture_output=True, timeout=3)
+
+        # Ensure xray.service has CAP_NET_ADMIN to create xray0 TUN device
+        try:
+            xray_override_dir = Path("/etc/systemd/system/xray.service.d")
+            xray_override_dir.mkdir(parents=True, exist_ok=True)
+            (xray_override_dir / "vpn-gateway.conf").write_text(
+                "[Service]\n"
+                "User=root\n"
+                "AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE\n"
+                "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE\n"
+                "ExecStartPost=/bin/sh -c 'sleep 1; /sbin/ip route replace default dev xray0 table 100 2>/dev/null || true'\n"
+            )
+            _final_setup_state["logs"].append("Добавлены права CAP_NET_ADMIN для xray.service (создание xray0 TUN).")
+        except Exception as e:
+            _final_setup_state["logs"].append(f"Предупреждение xray capabilities: {str(e)}")
 
         services = ["nftables", "hostapd", "dnsmasq", "xray", "vpn-gateway-routes"]
         for s in services:

@@ -537,10 +537,14 @@ EOF
         systemctl enable vpn-gateway-routes.service 2>/dev/null || true
     fi
 
-    # Ensure Xray service automatically attaches default route to table 100 on start
+    # Ensure Xray service has CAP_NET_ADMIN to create xray0 TUN device
+    # and automatically attaches default route to table 100 on start
     mkdir -p /etc/systemd/system/xray.service.d 2>/dev/null || true
-    cat <<EOF > /etc/systemd/system/xray.service.d/routing.conf
+    cat <<EOF > /etc/systemd/system/xray.service.d/vpn-gateway.conf
 [Service]
+User=root
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 ExecStartPost=/bin/sh -c 'sleep 1; /sbin/ip route replace default dev xray0 table 100 2>/dev/null || true'
 EOF
     systemctl daemon-reload 2>/dev/null || true

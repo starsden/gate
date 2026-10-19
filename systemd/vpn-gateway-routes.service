@@ -1,6 +1,6 @@
 [Unit]
 Description=VPN Gateway Policy Routing Rules & Table 100 Sync
-After=network.target network-online.target
+After=network.target network-online.target xray.service
 Wants=network.target network-online.target
 
 [Service]
@@ -9,6 +9,8 @@ RemainAfterExit=yes
 WorkingDirectory=/opt/vpn-gateway
 ExecStartPre=-/usr/sbin/rfkill unblock wifi
 ExecStartPre=-/usr/sbin/rfkill unblock all
+# Ждём 2 секунды чтобы xray0 TUN-интерфейс успел создаться
+ExecStartPre=/bin/sleep 2
 ExecStart=/opt/vpn-gateway/venv/bin/python -m backend.services.network
 ExecStop=/bin/sh -c 'ip rule del from 10.42.0.0/24 lookup 100 2>/dev/null || true'
 
