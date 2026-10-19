@@ -239,8 +239,11 @@ def generate_hostapd_content(iface: str, ssid: str, password: str, channel: int,
         "wpa=2",
         f"wpa_passphrase={password}",
         "wpa_key_mgmt=WPA-PSK",
-        "wpa_pairwise=TKIP",
+        "wpa_pairwise=CCMP",
         "rsn_pairwise=CCMP",
+        # Стабильность для смартфонов: не отключать по потерям ACK, увеличить таймер неактивности
+        "disassoc_low_ack=0",
+        "ap_max_inactivity=600",
     ])
 
     return "\n".join(lines) + "\n"
