@@ -419,14 +419,44 @@ def execute_auto_repair() -> Dict[str, Any]:
         except Exception as e:
             actions_taken.append(f"Wi-Fi interface prep warning: {str(e)}")
 
-    # 3. Synchronize Table 100 Policy Routes
+    # 3. Ensure TUN module, Xray capabilities, and Xray TUN config
+    if _is_linux():
+        try:
+            subprocess.run(["modprobe", "tun"], capture_output=True, timeout=2)
+            override_dir = Path("/etc/systemd/system/xray.service.d")
+            override_dir.mkdir(parents=True, exist_ok=True)
+            (override_dir / "override.conf").write_text(
+                "[Service]\n"
+                "User=root\n"
+                "AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE\n"
+                "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE\n"
+                "ExecStartPost=/bin/sh -c 'sleep 1; /sbin/ip route replace default dev xray0 table 100 2>/dev/null || true'\n"
+            )
+            subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=3)
+
+            # Check if xray0 device exists. If not, regenerate config from profile
+            has_xray0 = os.path.exists("/sys/class/net/xray0")
+            profile = read_vpn_profile()
+            if not has_xray0 and profile and profile.get("address"):
+                from .vpn import generate_xray_config, get_xray_config_files
+                cfg = generate_xray_config(profile)
+                for tf in get_xray_config_files():
+                    tf.parent.mkdir(parents=True, exist_ok=True)
+                    tf.write_text(json.dumps(cfg, indent=2))
+                restart_service("xray")
+                time.sleep(1)
+                actions_taken.append("Regenerated Xray TUN config with xray0 and restarted Xray")
+        except Exception as e:
+            actions_taken.append(f"Xray TUN recovery notice: {str(e)}")
+
+    # 4. Synchronize Table 100 Policy Routes
     sync_res = sync_policy_routing()
     if sync_res.get("success"):
         actions_taken.append("Synchronized Table 100 policy routes and VLESS server anti-loop route")
     else:
         actions_taken.append(f"Sync routes notice: {sync_res.get('error') or sync_res.get('message')}")
 
-    # 4. Load required kernel modules and re-apply nftables ruleset
+    # 5. Load required kernel modules and re-apply nftables ruleset
     if _is_linux():
         for mod in ["nf_tables", "nf_nat", "nft_nat", "nft_masq"]:
             subprocess.run(["modprobe", mod], capture_output=True, timeout=2)
@@ -443,7 +473,25 @@ def execute_auto_repair() -> Dict[str, Any]:
     else:
         actions_taken.append(f"Firewall reload notice: {fw_res.get('error') or fw_res.get('message')}")
 
-    # 5. Check and restart essential services
+    # 6. Ensure dnsmasq config has bind-dynamic, not bind-interfaces
+    if _is_linux():
+        try:
+            dns_conf = Path("/etc/dnsmasq.d/vpn-gateway.conf")
+            if dns_conf.exists():
+                text = dns_conf.read_text()
+                if "bind-interfaces" in text:
+                    dns_conf.write_text(text.replace("bind-interfaces", "bind-dynamic"))
+                    restart_service("dnsmasq")
+                    actions_taken.append("Fixed dnsmasq bind-dynamic configuration")
+            # Ensure host fallback nameservers exist in /etc/resolv.conf
+            res_conf = Path("/etc/resolv.conf")
+            if res_conf.exists() and not check_dns_resolution()[0]:
+                res_conf.write_text("nameserver 77.88.8.8\nnameserver 1.1.1.1\nnameserver 8.8.8.8\n")
+                actions_taken.append("Restored upstream nameservers in /etc/resolv.conf")
+        except Exception:
+            pass
+
+    # 7. Check and restart essential services
     for svc in ("nftables", "hostapd", "dnsmasq", "xray"):
         status = get_service_status(svc)
         if status["status"] != "active":

@@ -509,13 +509,15 @@ EOF
     sed -e "s/interface=wlp4s0/interface=${WIFI_IFACE}/g" \
         "${SOURCE_DIR}/configs/dnsmasq.conf" > /etc/dnsmasq.d/vpn-gateway.conf
 
-    # Kernel modules for NAT & masquerade
+    # Kernel modules for NAT, masquerade, and TUN device
+    modprobe tun 2>/dev/null || true
     modprobe nf_tables 2>/dev/null || true
     modprobe nf_nat 2>/dev/null || true
     modprobe nft_nat 2>/dev/null || true
     modprobe nft_masq 2>/dev/null || true
     mkdir -p /etc/modules-load.d 2>/dev/null || true
     cat <<EOF > /etc/modules-load.d/vpn-gateway.conf
+tun
 nft_nat
 nft_masq
 nf_nat

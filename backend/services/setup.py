@@ -838,13 +838,13 @@ table ip nat {{
 """
     if _is_linux():
         try:
-            # Ensure NAT and masquerade modules are loaded
-            for mod in ["nf_tables", "nf_nat", "nft_nat", "nft_masq"]:
+            # Ensure TUN, NAT and masquerade modules are loaded
+            for mod in ["tun", "nf_tables", "nf_nat", "nft_nat", "nft_masq"]:
                 subprocess.run(["modprobe", mod], capture_output=True, timeout=2)
             try:
                 mod_load_dir = Path("/etc/modules-load.d")
                 mod_load_dir.mkdir(parents=True, exist_ok=True)
-                (mod_load_dir / "vpn-gateway.conf").write_text("nft_nat\nnft_masq\nnf_nat\n")
+                (mod_load_dir / "vpn-gateway.conf").write_text("tun\nnft_nat\nnft_masq\nnf_nat\n")
             except Exception:
                 pass
 

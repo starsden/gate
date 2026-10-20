@@ -24,11 +24,15 @@ BACKUP_DIR = CONFIG_DIR / "backups"
 LOCAL_STATE_FILE = Path(__file__).resolve().parent.parent.parent / "configs" / "vpn_state.json"
 
 def get_xray_config_files() -> list:
-    targets = []
-    for p in [ALT_XRAY_CONF_PATH, XRAY_CONF_PATH]:
-        if p.exists() or p.parent.exists():
-            targets.append(p)
-    return targets if targets else [XRAY_CONF_PATH]
+    """Return all target paths where Xray might read configuration and ensure directories exist."""
+    targets = [ALT_XRAY_CONF_PATH, XRAY_CONF_PATH]
+    if _is_linux():
+        for p in targets:
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+    return targets
 
 _vpn_start_time: Optional[float] = None
 
@@ -497,8 +501,8 @@ def apply_vpn_config(vless_uri: str) -> Dict[str, Any]:
     if not is_valid:
         return {"success": False, "error": f"Invalid Xray configuration: {val_msg}"}
 
-    # Dev environment
-    if not _is_linux() or not os.path.exists("/etc/xray"):
+    # Dev environment (non-Linux)
+    if not _is_linux():
         save_vpn_profile(profile)
         return {
             "success": True,
@@ -516,6 +520,22 @@ def apply_vpn_config(vless_uri: str) -> Dict[str, Any]:
         }
 
     # Production Linux workflow with Backup & Rollback
+    # Ensure kernel tun module is loaded and CAP_NET_ADMIN override exists
+    try:
+        subprocess.run(["modprobe", "tun"], capture_output=True, timeout=2)
+        override_dir = Path("/etc/systemd/system/xray.service.d")
+        override_dir.mkdir(parents=True, exist_ok=True)
+        (override_dir / "override.conf").write_text(
+            "[Service]\n"
+            "User=root\n"
+            "AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE\n"
+            "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE\n"
+            "ExecStartPost=/bin/sh -c 'sleep 1; /sbin/ip route replace default dev xray0 table 100 2>/dev/null || true'\n"
+        )
+        subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=3)
+    except Exception:
+        pass
+
     target_files = get_xray_config_files()
     backups = {}
 
@@ -599,33 +619,37 @@ def reapply_vpn_with_routing(routing_cfg: Optional[Dict[str, Any]] = None) -> Di
     if not is_valid:
         return {"success": False, "error": f"Некорректная конфигурация Xray: {val_msg}"}
 
-    if not _is_linux() or not os.path.exists("/etc/xray"):
+    if not _is_linux():
         return {
             "success": True,
             "reloaded": True,
             "message": "Правила маршрутизации успешно обновлены (dev mode).",
         }
 
-    target_file = XRAY_CONF_PATH
-    backup_file = None
+    target_files = get_xray_config_files()
+    backups = {}
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        if target_file.exists():
-            timestamp = int(time.time())
-            backup_file = BACKUP_DIR / f"xray_config.json.{timestamp}.bak"
-            shutil.copy2(target_file, backup_file)
+        timestamp = int(time.time())
+        for tf in target_files:
+            if tf.exists():
+                bf = BACKUP_DIR / f"{tf.name}.{timestamp}.bak"
+                shutil.copy2(tf, bf)
+                backups[tf] = bf
 
-        temp_file = target_file.with_suffix(".tmp")
-        with open(temp_file, "w") as f:
-            json.dump(xray_conf, f, indent=2)
-        temp_file.replace(target_file)
+            tf.parent.mkdir(parents=True, exist_ok=True)
+            temp_file = tf.with_suffix(".tmp")
+            with open(temp_file, "w") as f:
+                json.dump(xray_conf, f, indent=2)
+            temp_file.replace(tf)
 
         restart_res = subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=10)
         check_res = subprocess.run(["systemctl", "is-active", "xray.service"], capture_output=True, text=True, timeout=4)
         if check_res.stdout.strip() != "active":
-            if backup_file and backup_file.exists():
-                shutil.copy2(backup_file, target_file)
-                subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
+            for tf, bf in backups.items():
+                if bf.exists():
+                    shutil.copy2(bf, tf)
+            subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
             err = restart_res.stderr.strip() or "Служба Xray не смогла запуститься с новыми правилами. Выполнен откат."
             return {"success": False, "error": err}
 
@@ -635,8 +659,9 @@ def reapply_vpn_with_routing(routing_cfg: Optional[Dict[str, Any]] = None) -> Di
             "message": "Конфигурация Xray обновлена и перезапущена.",
         }
     except Exception as e:
-        if backup_file and backup_file.exists() and target_file.exists():
-            shutil.copy2(backup_file, target_file)
-            subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
+        for tf, bf in backups.items():
+            if bf.exists():
+                shutil.copy2(bf, tf)
+        subprocess.run(["systemctl", "restart", "xray.service"], capture_output=True, text=True, timeout=5)
         return {"success": False, "error": f"Ошибка обновления правил Xray: {str(e)}"}
 
